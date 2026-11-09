@@ -1,11 +1,13 @@
 # @open-ocpp-trace/jsonl
 
-JSONL reading of [Open OCPP Trace](https://github.com/open-ocpp-trace/specification)
-records: one JSON record per line, validated with `@open-ocpp-trace/core`.
+JSONL reading and writing of
+[Open OCPP Trace](https://github.com/open-ocpp-trace/specification) records:
+one JSON record per line, validated with `@open-ocpp-trace/core`.
 
 The package does no I/O of its own. It reads from any iterable of string or
-`Uint8Array` chunks, so the same code runs in browsers, Node.js, Bun and Deno;
-the caller opens the file or the stream.
+`Uint8Array` chunks and writes strings to any object with a `write` method,
+so the same code runs in browsers, Node.js, Bun and Deno; the caller opens
+the file or the stream.
 
 ## Install
 
@@ -22,6 +24,7 @@ The package is ESM only. Its one runtime dependency is
 | ------------------------------- | ------------------------------------------------------------- |
 | `@open-ocpp-trace/jsonl`        | everything below, plus `SCHEMA_VERSION` re-exported from core |
 | `@open-ocpp-trace/jsonl/reader` | the reader only                                               |
+| `@open-ocpp-trace/jsonl/writer` | the writer only                                               |
 
 ## Reader
 
@@ -190,3 +193,133 @@ Memory use does not grow with the size of the stream.
 
 Line numbers count LFs from the start of the stream, so they match the line
 numbers of a text editor, BOM and blank lines included.
+
+## Writer
+
+### `serializeRecord`: one line
+
+```ts
+import { serializeRecord } from "@open-ocpp-trace/jsonl/writer";
+
+const line = serializeRecord(record); // '{"schemaVersion":"1.1",…}\n'
+```
+
+`serializeRecord(record, { validate? })` returns one JSONL line: the
+compact output of `JSON.stringify(record)`, in the record's own key order,
+followed by a single LF. `JSON.stringify` escapes CR, LF and lone
+surrogates, so the line holds no other terminator and encodes to valid
+UTF-8. It never returns a partial line: a record that cannot be written
+throws a `JsonlWriteError`.
+
+`validate` (default `true`) checks the record with core's `validateRecord`
+before writing it; an invalid record is not written. Validation sees the
+value as passed, before any `toJSON`. With `validate: false`, any value
+whose `JSON.stringify` output is a JSON object is written. A `validate`
+that is not a boolean throws a `TypeError`.
+
+### `serializeRecords` and `writeRecords`: a stream
+
+`records` is an `Iterable` or an `AsyncIterable`, such as an array or an
+async generator. Both functions take the same `{ validate? }` option, check
+it when called and stop at the first record that cannot be written; lines
+already produced stay valid.
+
+`serializeRecords(records, options)` returns an `AsyncIterable<string>` of
+lines, one per record, pulled lazily:
+
+```ts
+import { serializeRecords } from "@open-ocpp-trace/jsonl/writer";
+
+for await (const line of serializeRecords(records)) {
+  // …
+}
+```
+
+`writeRecords(records, sink, options)` sends each line to `sink.write(chunk)`
+and resolves with the number of records written. The sink is any object
+with a `write(chunk: string): void | Promise<void>` method (`LineSink`).
+
+### Sinks
+
+The writer takes any `LineSink`; these adapters are examples, not part of
+the API.
+
+Node.js: a file write stream, waiting for `drain` when its buffer is full:
+
+```ts
+import { createWriteStream } from "node:fs";
+import { once } from "node:events";
+import { writeRecords } from "@open-ocpp-trace/jsonl/writer";
+
+const out = createWriteStream("trace.jsonl", { encoding: "utf8" });
+try {
+  await writeRecords(records, {
+    async write(chunk) {
+      if (!out.write(chunk)) await once(out, "drain");
+    },
+  });
+  out.end();
+  await once(out, "finish");
+} catch (error) {
+  out.destroy(error as Error);
+  throw error;
+}
+```
+
+Browsers, Deno and Bun: a `WritableStream<Uint8Array>` behind a
+`TextEncoderStream`, whose writer is a `LineSink` as is:
+
+```ts
+const encoder = new TextEncoderStream();
+const piped = encoder.readable.pipeTo(destination); // a WritableStream<Uint8Array>
+const writer = encoder.writable.getWriter();
+try {
+  await writeRecords(records, writer);
+  await writer.close();
+} catch (error) {
+  await writer.abort(error);
+  await piped.catch(() => undefined);
+  throw error;
+}
+await piped;
+```
+
+### Output rules
+
+- **Lines.** One compact JSON object per record, then one LF. No BOM, no
+  blank lines, and nothing at all for an empty input.
+- **Encoding.** Lines are strings; the sink encodes them, as UTF-8 for a
+  JSONL file. U+2028 and U+2029 are written as is, which JSONL allows.
+- **Fields.** Unknown fields, `meta` and `raw` are written as given. An
+  `undefined` top-level field is absent for validation and omitted from the
+  line, so it reads back as absent.
+- **Not detected.** Inside `payload`, `meta` or `error.details`,
+  `JSON.stringify` silently omits properties holding `undefined`, a
+  function or a symbol, turns the same values in an array and `NaN` or
+  `±Infinity` into `null`, and writes a `toJSON` result in place of the
+  object.
+- **Backpressure.** Each `sink.write` call is awaited before the next
+  record is pulled, so at most one write is in flight. A sink throw or
+  rejection propagates unchanged, as does an error thrown by the source.
+- **Closing.** The sink is left open, after success or failure; closing or
+  flushing it is the caller's job.
+
+### Errors
+
+`JsonlWriteError` extends `Error`. In a stream its `message` starts with
+`Record <n>: `, and it has:
+
+| Property | Meaning                                                                                       |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `index`  | 0-based position of the record in its stream; `undefined` for `serializeRecord`               |
+| `kind`   | `"validation"`, `"unserializable"`, `"no-output"` or `"not-an-object"`                        |
+| `issues` | `ValidationIssue[]` from core for a `validation` error; empty otherwise                       |
+| `cause`  | core's `TraceValidationError` (`validation`) or the `JSON.stringify` error (`unserializable`) |
+
+- `validation`: the record is not a valid trace record.
+- `unserializable`: `JSON.stringify` threw, for a circular structure, a
+  `BigInt` or a throwing `toJSON`.
+- `no-output`: `JSON.stringify` returned nothing, for a top-level
+  `undefined`, function or symbol (only with `validate: false`).
+- `not-an-object`: the output is JSON but not an object, such as a string,
+  `null` or an array (only with `validate: false`).
