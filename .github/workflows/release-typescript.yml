@@ -1,25 +1,20 @@
-name: Release TypeScript package
+name: Release TypeScript packages
 
-# Publishes one package of the TypeScript workspace to the npm registry
-# of GitHub Packages (https://npm.pkg.github.com). Started by hand only;
-# see typescript/RELEASING.md. A run publishes nothing unless `dry-run` is
-# unticked, and the `publish` job waits for the reviewers of the
-# `github-packages` environment either way. That approval gate exists only
-# once the environment is configured with required reviewers and the
+# Publishes the packages of the TypeScript workspace, core then jsonl, at
+# one shared version, to the npm registry of GitHub Packages
+# (https://npm.pkg.github.com), then tags the release
+# `typescript-v<version>` and creates its GitHub release. Started by hand
+# only; see typescript/RELEASING.md. A run publishes nothing unless
+# `dry-run` is unticked, and the `publish` job waits for the reviewers of
+# the `github-packages` environment either way. That approval gate exists
+# only once the environment is configured with required reviewers and the
 # `main` deployment branch (RELEASING.md, prerequisites): GitHub creates a
 # missing environment unprotected on the first run that names it.
 on:
   workflow_dispatch:
     inputs:
-      package:
-        description: Package to release (directory under typescript/packages)
-        type: choice
-        required: true
-        options:
-          - core
-          - jsonl
       dry-run:
-        description: Run `npm publish --dry-run` and create no tag
+        description: Run `npm publish --dry-run` and create no tag or release
         type: boolean
         required: true
         default: true
@@ -32,7 +27,7 @@ env:
   SCOPE: '@open-ocpp-trace'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.package }}
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 jobs:
@@ -44,8 +39,6 @@ jobs:
       # Reading the registry to check what is already published.
       packages: read
     outputs:
-      tarball: ${{ steps.pack.outputs.tarball }}
-      name: ${{ steps.pack.outputs.name }}
       version: ${{ steps.pack.outputs.version }}
       tag: ${{ steps.pack.outputs.tag }}
     defaults:
@@ -80,23 +73,37 @@ jobs:
       # them into a clean consumer and imports them under Node.js and Bun.
       - name: Smoke test
         run: sh scripts/smoke-consumer.sh
-      - name: Pack and verify the release tarball
+      - name: Pack and verify the release tarballs
         id: pack
-        env:
-          PACKAGE: ${{ inputs.package }}
         run: |
-          set -o pipefail
-          path="$(sh scripts/pack-release.sh "$RUNNER_TEMP/release" "$PACKAGE")"
-          sh scripts/verify-packages.sh "$path"
-          name="$(tar -xzOf "$path" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).name')"
-          version="$(tar -xzOf "$path" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')"
+          # Assigned first so that a failing pack fails the step instead of
+          # yielding an empty list.
+          packed="$(sh scripts/pack-release.sh "$RUNNER_TEMP/release" core jsonl)"
+          mapfile -t tarballs <<<"$packed"
+          sh scripts/verify-packages.sh "${tarballs[@]}"
+          # One version for every package, and jsonl pins core to it.
+          version="$(node scripts/release-manifest.ts lockstep "${tarballs[@]}")"
           {
-            echo "tarball=$(basename -- "$path")"
-            echo "name=$name"
             echo "version=$version"
-            echo "tag=$name@$version"
+            echo "tag=typescript-v$version"
           } >> "$GITHUB_OUTPUT"
-          echo "packed $name@$version as $path"
+          echo "packed version $version: ${tarballs[*]}"
+      - name: Extract the release notes
+        env:
+          VERSION: ${{ steps.pack.outputs.version }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          notes="$RUNNER_TEMP/release-notes/release-notes.md"
+          mkdir -p "$RUNNER_TEMP/release-notes"
+          if sh scripts/release-notes.sh "$VERSION" > "$notes"; then
+            cat "$notes" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$DRY_RUN" = true ]; then
+            echo "::warning::a CHANGELOG.md has no [$VERSION] section; a real release would stop here"
+            rm -f -- "$notes"
+          else
+            echo "::error::every package CHANGELOG.md needs a [$VERSION] section with entries"
+            exit 1
+          fi
       # After the smoke test, whose clean consumer must not see this
       # configuration. npm expands ${NODE_AUTH_TOKEN} when it reads the file.
       - name: Point the scope at GitHub Packages
@@ -109,7 +116,6 @@ jobs:
           echo "NPM_CONFIG_USERCONFIG=$npmrc" >> "$GITHUB_ENV"
       - name: Check that this version is not released yet
         env:
-          NAME: ${{ steps.pack.outputs.name }}
           VERSION: ${{ steps.pack.outputs.version }}
           TAG: ${{ steps.pack.outputs.tag }}
           DRY_RUN: ${{ inputs.dry-run }}
@@ -118,7 +124,7 @@ jobs:
         run: |
           status=0
           if [ "$DRY_RUN" != true ] && [ "$VERSION" = 0.0.0 ]; then
-            echo "::error::$NAME is still at 0.0.0; set the release version first"
+            echo "::error::the packages are still at 0.0.0; set the release version first"
             status=1
           fi
           # With --exit-code, git exits 2 when no ref matches; any other
@@ -139,48 +145,36 @@ jobs:
           # npm fails with E404 for an unknown package or version; any
           # other failure (network, registry, authentication) leaves the
           # answer unknown.
-          errors="$RUNNER_TEMP/npm-view.err"
-          rc=0
-          published="$(npm view "$NAME@$VERSION" version 2>"$errors")" || rc=$?
-          if [ "$rc" -ne 0 ]; then
-            cat "$errors" >&2
-            if ! grep -q 'code E404' "$errors"; then
-              echo "::error::cannot query $REGISTRY_URL for $NAME@$VERSION (npm exited with $rc)"
-              exit 1
+          for package in core jsonl; do
+            name="$SCOPE/$package"
+            errors="$RUNNER_TEMP/npm-view-$package.err"
+            rc=0
+            published="$(npm view "$name@$VERSION" version 2>"$errors")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              cat "$errors" >&2
+              if ! grep -q 'code E404' "$errors"; then
+                echo "::error::cannot query $REGISTRY_URL for $name@$VERSION (npm exited with $rc)"
+                exit 1
+              fi
+              published=
             fi
-            published=
-          fi
-          if [ -n "$published" ]; then
-            echo "::error::$NAME@$VERSION is already on $REGISTRY_URL"
-            status=1
-          fi
-          exit "$status"
-      - name: Check that workspace dependencies are published
-        if: ${{ !inputs.dry-run }}
-        env:
-          TARBALL: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
-          NODE_AUTH_TOKEN: ${{ github.token }}
-        run: |
-          set -o pipefail
-          # Assigned first so that a failing tar or node fails the step
-          # instead of yielding an empty list.
-          specs="$(tar -xzOf "$TARBALL" package/package.json | node -e '
-            const deps = JSON.parse(require("fs").readFileSync(0, "utf8")).dependencies ?? {};
-            for (const [name, version] of Object.entries(deps))
-              if (name.startsWith("@open-ocpp-trace/")) console.log(name + "@" + version);
-          ')"
-          status=0
-          for spec in $specs; do
-            if [ -z "$(npm view "$spec" version 2>/dev/null || true)" ]; then
-              echo "::error::$spec is not on $REGISTRY_URL; release it first"
+            if [ -n "$published" ]; then
+              echo "::error::$name@$VERSION is already on $REGISTRY_URL"
               status=1
             fi
           done
           exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-tarball
-          path: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
+          name: release-tarballs
+          path: ${{ runner.temp }}/release/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !inputs.dry-run }}
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes/release-notes.md
           if-no-files-found: error
           retention-days: 7
 
@@ -206,7 +200,7 @@ jobs:
           fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-tarball
+          name: release-tarballs
           path: release
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -220,34 +214,99 @@ jobs:
         run: |
           npm install --global npm@11.21.1
           echo "node $(node --version), npm $(npm --version)"
-      - name: Publish ${{ needs.verify.outputs.tag }}
+      - name: Publish version ${{ needs.verify.outputs.version }}
         env:
-          TARBALL: ${{ needs.verify.outputs.tarball }}
+          VERSION: ${{ needs.verify.outputs.version }}
           DRY_RUN: ${{ inputs.dry-run }}
           NODE_AUTH_TOKEN: ${{ github.token }}
+        # Core first: jsonl depends on its exact version. A package already
+        # on the registry is skipped, so « Re-run failed jobs » can finish a
+        # run that published core and failed on jsonl.
         # No --provenance: npm provenance is not documented for GitHub
         # Packages. Visibility is set in the package settings, not by
         # --access.
         run: |
-          set -- --registry "$REGISTRY_URL"
-          if [ "$DRY_RUN" = true ]; then
-            set -- "$@" --dry-run
-          fi
-          npm publish "./release/$TARBALL" "$@"
+          for package in core jsonl; do
+            name="$SCOPE/$package"
+            tarball="./release/open-ocpp-trace-$package-$VERSION.tgz"
+            if [ "$DRY_RUN" = true ]; then
+              npm publish "$tarball" --registry "$REGISTRY_URL" --dry-run
+              continue
+            fi
+            # E404 means not published; any other failure leaves the
+            # answer unknown.
+            errors="$RUNNER_TEMP/npm-view-$package.err"
+            rc=0
+            published="$(npm view "$name@$VERSION" version 2>"$errors")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              cat "$errors" >&2
+              if ! grep -q 'code E404' "$errors"; then
+                echo "::error::cannot query $REGISTRY_URL for $name@$VERSION (npm exited with $rc)"
+                exit 1
+              fi
+              published=
+            fi
+            if [ -n "$published" ]; then
+              echo "::notice::$name@$VERSION is already on $REGISTRY_URL; not publishing it again"
+              continue
+            fi
+            npm publish "$tarball" --registry "$REGISTRY_URL"
+          done
 
   tag:
-    name: Tag the release
+    name: Tag and create the GitHub release
     needs: [verify, publish]
     if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     permissions:
-      # Creating a tag through the Git references API.
+      # Creating the tag through the Git references API, and the release.
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.verify.outputs.tag }}
+      VERSION: ${{ needs.verify.outputs.version }}
     steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+          path: release-notes
+      # Skipped when the tag already points at this commit, so a re-run
+      # can finish a run whose release step failed. A tag on another commit
+      # fails the job.
       - name: Create ${{ needs.verify.outputs.tag }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.verify.outputs.tag }}
         run: |
+          errors="$RUNNER_TEMP/tag.err"
+          rc=0
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2>"$errors")" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            if [ "$sha" = "$GITHUB_SHA" ]; then
+              echo "::notice::tag $TAG already points at $GITHUB_SHA; not creating it again"
+              exit 0
+            fi
+            echo "::error::tag $TAG points at $sha, not at $GITHUB_SHA"
+            exit 1
+          fi
+          cat "$errors" >&2
+          if ! grep -q 'HTTP 404' "$errors"; then
+            echo "::error::cannot look up tag $TAG (gh exited with $rc)"
+            exit 1
+          fi
           gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
             -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"
+      - name: Create the GitHub release
+        run: |
+          errors="$RUNNER_TEMP/release.err"
+          rc=0
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" >/dev/null 2>"$errors" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "::notice::the release of $TAG already exists; not creating it again"
+            exit 0
+          fi
+          cat "$errors" >&2
+          if ! grep -q 'HTTP 404' "$errors"; then
+            echo "::error::cannot look up the release of $TAG (gh exited with $rc)"
+            exit 1
+          fi
+          gh release create "$TAG" --verify-tag --title "TypeScript $VERSION" \
+            --notes-file release-notes/release-notes.md
