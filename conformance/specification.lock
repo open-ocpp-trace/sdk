@@ -1,0 +1,4 @@
+# Pinned revision of the Open OCPP Trace specification corpus.
+# Change it with: conformance/fetch.sh --update <commit-sha>
+repository=https://github.com/open-ocpp-trace/specification.git
+revision=c9c2499d821f6d5f7d5981da86b50d225c1d9ef8
