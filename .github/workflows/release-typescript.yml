@@ -72,6 +72,7 @@ jobs:
         env:
           PACKAGE: ${{ inputs.package }}
         run: |
+          set -o pipefail
           path="$(sh scripts/pack-release.sh "$RUNNER_TEMP/release" "$PACKAGE")"
           sh scripts/verify-packages.sh "$path"
           name="$(tar -xzOf "$path" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).name')"
@@ -111,12 +112,16 @@ jobs:
         env:
           TARBALL: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
         run: |
-          status=0
-          for spec in $(tar -xzOf "$TARBALL" package/package.json | node -e '
+          set -o pipefail
+          # Assigned first so that a failing tar or node fails the step
+          # instead of yielding an empty list.
+          specs="$(tar -xzOf "$TARBALL" package/package.json | node -e '
             const deps = JSON.parse(require("fs").readFileSync(0, "utf8")).dependencies ?? {};
             for (const [name, version] of Object.entries(deps))
               if (name.startsWith("@open-ocpp-trace/")) console.log(name + "@" + version);
-          '); do
+          ')"
+          status=0
+          for spec in $specs; do
             if [ -z "$(npm view "$spec" version 2>/dev/null || true)" ]; then
               echo "::error::$spec is not on npm; release it first"
               status=1
