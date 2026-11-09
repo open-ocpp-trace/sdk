@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Trace format or schema proposal
+    url: https://github.com/open-ocpp-trace/specification/issues
+    about: >-
+      The record schema, fixtures and conformance rules are owned by the
+      specification. Propose format changes there first.
+  - name: Contribution guide
+    url: https://github.com/open-ocpp-trace/sdk/blob/main/CONTRIBUTING.md
+    about: Prerequisites, checks, review rules and how to submit changes.
