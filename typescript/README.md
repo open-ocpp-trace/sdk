@@ -13,7 +13,7 @@ Package boundaries are described in
 
 Each package is versioned and released on its own, with its own
 `CHANGELOG.md`; [RELEASING.md](RELEASING.md) describes the release
-workflow, its prerequisites and the dry run. Nothing is published yet.
+workflow, its prerequisites and the dry run.
 
 ## Prerequisites
 

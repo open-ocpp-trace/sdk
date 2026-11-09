@@ -36,5 +36,5 @@ Closes #
       [docs/compatibility.md](https://github.com/open-ocpp-trace/sdk/blob/main/docs/compatibility.md)
       are updated where users see the change.
 - [ ] A change visible to package users is described in the summary above
-      (breaking: `!` and a `BREAKING CHANGE:` footer). `CHANGELOG.md` is
-      written in the release pull request, not here.
+      (breaking: `!` and a `BREAKING CHANGE:` footer) and has an entry under
+      `Unreleased` in the package's `CHANGELOG.md`.
