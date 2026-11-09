@@ -11,8 +11,8 @@ TypeScript implementation of the
 Package boundaries are described in
 [docs/architecture.md](../docs/architecture.md#package-boundaries).
 
-Each package is versioned and released on its own, with its own
-`CHANGELOG.md`; [RELEASING.md](RELEASING.md) describes the release
+The packages share one version and are released together, each with its
+own `CHANGELOG.md`; [RELEASING.md](RELEASING.md) describes the release
 workflow, its prerequisites and the dry run.
 
 ## Prerequisites
