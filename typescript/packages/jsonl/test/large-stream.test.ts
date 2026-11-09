@@ -5,6 +5,7 @@
 // streams: the generator never runs more than a few chunks ahead of the
 // consumer, so the input is never buffered whole.
 
+import type { TraceRecord } from "@open-ocpp-trace/core";
 import { describe, expect, it } from "vite-plus/test";
 
 import { BASE_FIELDS } from "../../core/test/support/records.ts";
@@ -17,7 +18,7 @@ const CHUNK_BYTES = 4096;
 const MAX_LINE_BYTES = 1024;
 
 /** The `index`-th record; its text is non-ASCII so that chunks split characters. */
-function syntheticRecord(index: number): Record<string, unknown> {
+function syntheticRecord(index: number): TraceRecord {
   const id = `msg-${index}`;
   return index % 2 === 0
     ? {
@@ -49,7 +50,7 @@ function checksum(previous: number, messageId: unknown): number {
 const FNV_OFFSET = 0x811c9dc5;
 
 /** Generates the records lazily, counting how many have been pulled. */
-function* generate(state: { produced: number; checksum: number }): Generator<unknown> {
+function* generate(state: { produced: number; checksum: number }): Generator<TraceRecord> {
   for (let index = 0; index < RECORD_COUNT; index += 1) {
     const record = syntheticRecord(index);
     state.produced += 1;

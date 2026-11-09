@@ -9,6 +9,7 @@ import { callError, callResult, fullCall } from "../../core/test/support/records
 import { JsonlReadError, readRecords, type ReadResult } from "../src/reader/index.ts";
 import { serializeRecords } from "../src/writer/index.ts";
 import { chunksOf, concat, randomChunks, seededRandom, utf8 } from "./support/chunks.ts";
+import { untypedAll } from "./writer/untyped.ts";
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const items: T[] = [];
@@ -109,7 +110,9 @@ describe("extensions and raw frames through write then read", () => {
     },
   ];
 
-  const written = async () => (await collect(serializeRecords(RECORDS))).join("");
+  // The top-level extension fields are outside `TraceRecord` on purpose:
+  // they stand for fields of a newer minor version the types do not know.
+  const written = async () => (await collect(serializeRecords(untypedAll(RECORDS)))).join("");
 
   it.each([
     ["whole text", (text: string) => [text]],
