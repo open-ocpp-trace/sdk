@@ -15,7 +15,7 @@ The SDK version (the semantic version of a package) and the format version
 which SDK release a new format version calls for, is defined in
 [docs/architecture.md § Versioning](architecture.md#versioning).
 
-The TypeScript packages are not published yet: both are at version `0.0.0`.
+Both TypeScript packages are at version `0.1.0`, their first release.
 
 ## Format versions
 

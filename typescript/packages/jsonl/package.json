@@ -1,6 +1,6 @@
 {
   "name": "@open-ocpp-trace/jsonl",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "JSONL reading and writing of Open OCPP Trace records.",
   "license": "Apache-2.0",
   "repository": {
