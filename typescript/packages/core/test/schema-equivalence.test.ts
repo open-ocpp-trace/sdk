@@ -22,6 +22,7 @@ import {
   type CallErrorRecord,
   type CallRecord,
   type CallResultRecord,
+  type TraceError,
   type TraceRecord,
 } from "../src/index.ts";
 import { fixtureTraces, readSchema } from "./support/corpus.ts";
@@ -84,6 +85,8 @@ const TIMESTAMPS: readonly string[] = [
   "0000-01-01T00:00:00Z",
   "2025-01-15T23:59:60Z",
   "2025-01-15T18:59:60-05:00",
+  // The offset carries the UTC minute below zero: 00:00+00:01 is 23:59 UTC.
+  "2025-01-15T00:00:60+00:01",
   // Rejected.
   "",
   "2025-01-15",
@@ -109,6 +112,7 @@ const TIMESTAMPS: readonly string[] = [
   "2025-01-15T10:30:60Z",
   "2025-01-15T23:59:61Z",
   "2025-01-15T23:59:60+01:00",
+  "2025-01-15T00:01:60+00:01",
   "2025-01-15T10:30:00+24:00",
   "2025-01-15T10:30:00+01:60",
   "2025-01-15T10:30:00+1",
@@ -310,12 +314,23 @@ const RECORD_KEYS = [
   "meta",
 ] as const;
 
+/** `error` fields, in the order of the schema's `error.properties`. */
+const ERROR_KEYS = ["code", "description", "details"] as const;
+
 describe("the model matches the pinned JSON Schema", () => {
-  const properties = schema["properties"] as Record<string, { enum?: unknown }>;
+  const properties = schema["properties"] as Record<
+    string,
+    { enum?: unknown; properties?: Record<string, unknown> }
+  >;
 
   it("declares the same fields", () => {
     expect(Object.keys(properties)).toEqual(RECORD_KEYS);
     expectTypeOf<(typeof RECORD_KEYS)[number]>().toEqualTypeOf<AnyKey<TraceRecord>>();
+  });
+
+  it("declares the same error fields", () => {
+    expect(Object.keys(properties["error"]?.properties ?? {})).toEqual(ERROR_KEYS);
+    expectTypeOf<(typeof ERROR_KEYS)[number]>().toEqualTypeOf<keyof TraceError>();
   });
 
   it("requires the same fields", () => {

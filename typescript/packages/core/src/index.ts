@@ -9,7 +9,6 @@ export {
   type MessageType,
   type TraceError,
   type TraceRecord,
-  type TraceRecordFields,
   type Transport,
 } from "./record.ts";
 export {

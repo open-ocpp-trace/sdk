@@ -69,6 +69,7 @@ try {
 | `SCHEMA_VERSION`, `SUPPORTED_SCHEMA_MAJOR`                   | see [Supported format version](#supported-format-version)                           |
 | `TRANSPORTS`, `DIRECTIONS`, `MESSAGE_TYPES`                  | allowed values, in schema order                                                     |
 | `TraceRecord`                                                | `CallRecord \| CallResultRecord \| CallErrorRecord`, discriminated by `messageType` |
+| `CallRecord`, `CallResultRecord`, `CallErrorRecord`          | the record of each `messageType`: CALL, CALLRESULT, CALLERROR                       |
 | `TraceError`                                                 | the `error` object of a CALLERROR                                                   |
 | `Transport`, `Direction`, `MessageType`                      | string unions derived from the constants                                            |
 | `ValidationResult`, `ValidationIssue`, `ValidationIssueCode` | diagnostics types                                                                   |
