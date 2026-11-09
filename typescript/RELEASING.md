@@ -2,8 +2,9 @@
 
 > **Nothing is published yet.** Do not run a release with `dry-run`
 > unticked until the maintainers have confirmed ownership of the
-> `@open-ocpp-trace` scope on npm and configured the trusted publisher
-> described below. A dry run publishes nothing.
+> `@open-ocpp-trace` scope on npm, protected the `npm` environment and
+> then configured the trusted publisher, as described below. A dry run
+> publishes nothing.
 
 Each package of this workspace (`@open-ocpp-trace/core`,
 `@open-ocpp-trace/jsonl`) is released on its own by the manually started
@@ -58,7 +59,23 @@ done yet.
 
 1. **npm scope.** Confirm that the `open-ocpp-trace` npm organization owns
    the `@open-ocpp-trace` scope and add the maintainers to it.
-2. **Trusted publisher, per package.** In the package settings on
+2. **GitHub environment `npm`** (Settings → Environments), before the
+   trusted publisher: required reviewers (the maintainers) and deployment
+   branches restricted to `main`. The publish job of every run, dry runs
+   included, waits for a reviewer and, with that branch rule, runs only
+   from `main`; on another branch only the `verify` job proves the
+   package. Enable « Prevent self-review » only when at least two people
+   are required reviewers, otherwise the person who starts a run can
+   never approve it.
+
+   This order matters. npm trusts any run of `release-typescript.yml`
+   in the `npm` environment, and checks nothing else. GitHub creates a
+   missing environment, unprotected, the first time a job names it. A
+   trusted publisher configured before the environment is protected
+   would let anyone with write access dispatch a modified workflow from
+   a branch and publish.
+
+3. **Trusted publisher, per package.** In the package settings on
    npmjs.com, « Trusted Publisher », add GitHub Actions with:
    - organization or user `open-ocpp-trace`, repository `sdk`;
    - workflow filename `release-typescript.yml` (file name only, exact
@@ -73,16 +90,9 @@ done yet.
    the very first version of each package is published is to be decided
    by the maintainers before the first release.
 
-3. **After the first trusted publish**, in the package settings,
+4. **After the first trusted publish**, in the package settings,
    « Publishing access », select « Require two-factor authentication and
    disallow tokens », and revoke any automation token.
-4. **GitHub environment `npm`** (Settings → Environments): required
-   reviewers (the maintainers) and deployment branches restricted to
-   `main`. The publish job of every run, dry runs included, waits for a
-   reviewer and, with that branch rule, runs only from `main`; on another
-   branch only the `verify` job proves the package. Enable « Prevent
-   self-review » only when at least two people are required reviewers,
-   otherwise the person who starts a run can never approve it.
 5. The repository must stay public: npm only generates provenance for a
    public package published from a public repository.
 

@@ -3,7 +3,10 @@ name: Release TypeScript package
 # Publishes one package of the TypeScript workspace to npm. Started by
 # hand only; see typescript/RELEASING.md. A run publishes nothing unless
 # `dry-run` is unticked, and the `publish` job waits for the reviewers of
-# the `npm` environment either way.
+# the `npm` environment either way. That approval gate exists only once
+# the `npm` environment is configured with required reviewers and the
+# `main` deployment branch (RELEASING.md, prerequisite 2): GitHub creates
+# a missing environment unprotected on the first run that names it.
 on:
   workflow_dispatch:
     inputs:
@@ -58,8 +61,9 @@ jobs:
           package-manager: |
             bun: false
           run-install: false
-          cache: true
-          cache-dependency-path: bun.lock
+          # No cache in a release: an entry saved by another run, from any
+          # branch, could inject code into the published package.
+          cache: false
       - run: bun install --frozen-lockfile
       - run: vp check
       - run: vp test
@@ -97,11 +101,34 @@ jobs:
             echo "::error::$NAME is still at 0.0.0; set the release version first"
             status=1
           fi
-          if git ls-remote --exit-code --tags "$REPOSITORY_URL" "refs/tags/$TAG" >/dev/null; then
-            echo "::error::tag $TAG already exists"
-            status=1
+          # With --exit-code, git exits 2 when no ref matches; any other
+          # failure leaves the answer unknown, so the job stops.
+          rc=0
+          git ls-remote --exit-code --tags "$REPOSITORY_URL" "refs/tags/$TAG" >/dev/null || rc=$?
+          case "$rc" in
+            0)
+              echo "::error::tag $TAG already exists"
+              status=1
+              ;;
+            2) ;;
+            *)
+              echo "::error::cannot list the tags of $REPOSITORY_URL (git exited with $rc)"
+              exit 1
+              ;;
+          esac
+          # npm fails with E404 for an unknown package or version; any
+          # other failure (network, registry) leaves the answer unknown.
+          errors="$RUNNER_TEMP/npm-view.err"
+          rc=0
+          published="$(npm view "$NAME@$VERSION" version 2>"$errors")" || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            cat "$errors" >&2
+            if ! grep -q 'code E404' "$errors"; then
+              echo "::error::cannot query npm for $NAME@$VERSION (npm exited with $rc)"
+              exit 1
+            fi
+            published=
           fi
-          published="$(npm view "$NAME@$VERSION" version 2>/dev/null || true)"
           if [ -n "$published" ]; then
             echo "::error::$NAME@$VERSION is already on npm"
             status=1
