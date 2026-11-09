@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { inspectPackage, SOURCE_CONDITION, stripSourceCondition } from "./release-manifest.ts";
+import {
+  inspectPackage,
+  lockstepProblems,
+  SOURCE_CONDITION,
+  stripSourceCondition,
+} from "./release-manifest.ts";
 
 const workspaceManifest = {
   name: "@open-ocpp-trace/jsonl",
@@ -111,5 +116,45 @@ describe("inspectPackage", () => {
     expect(inspectPackage(manifest, publishedFiles)).toEqual([
       'dependencies["@open-ocpp-trace/core"] is workspace:*, not a published version',
     ]);
+  });
+});
+
+describe("lockstepProblems", () => {
+  const core = { name: "@open-ocpp-trace/core", version: "0.2.0" };
+  const jsonl = {
+    name: "@open-ocpp-trace/jsonl",
+    version: "0.2.0",
+    dependencies: { "@open-ocpp-trace/core": "0.2.0", other: "^1.0.0" },
+  };
+
+  it("accepts packages at one version whose scoped dependencies pin it", () => {
+    expect(lockstepProblems([core, jsonl])).toEqual([]);
+  });
+
+  it("reports packages at different versions", () => {
+    expect(lockstepProblems([core, { ...jsonl, version: "0.3.0" }])).toEqual([
+      "@open-ocpp-trace/jsonl is at 0.3.0, not 0.2.0 like @open-ocpp-trace/core",
+    ]);
+  });
+
+  it("reports a scoped dependency on another version", () => {
+    const manifest = { ...jsonl, peerDependencies: { "@open-ocpp-trace/core": "^0.2.0" } };
+    expect(lockstepProblems([core, manifest])).toEqual([
+      '@open-ocpp-trace/jsonl peerDependencies["@open-ocpp-trace/core"] is ^0.2.0, not 0.2.0',
+    ]);
+  });
+
+  it("reports a scoped dependency that is not released with the others", () => {
+    const manifest = { ...jsonl, dependencies: { "@open-ocpp-trace/model": "0.2.0" } };
+    expect(lockstepProblems([core, manifest])).toEqual([
+      '@open-ocpp-trace/jsonl dependencies["@open-ocpp-trace/model"] is not released with the other packages',
+    ]);
+  });
+
+  it("reports a missing version and an empty list", () => {
+    expect(lockstepProblems([{ name: "@open-ocpp-trace/core" }])).toEqual([
+      "@open-ocpp-trace/core has no version",
+    ]);
+    expect(lockstepProblems([])).toEqual(["no package to release"]);
   });
 });

@@ -5,6 +5,9 @@
 //
 //   node scripts/release-manifest.ts strip <package.json>   rewrite in place
 //   node scripts/release-manifest.ts inspect <tarball>      exit 1 on problems
+//   node scripts/release-manifest.ts lockstep <tarball>...  print the shared
+//                                                           version, exit 1
+//                                                           if not in lockstep
 //
 // `strip` is only ever run on the copy extracted from a tarball, never on
 // a committed package.json.
@@ -102,25 +105,87 @@ export function inspectPackage(manifest: Manifest, files: readonly string[]): st
   return problems;
 }
 
+/** Scope of the packages released together from this workspace. */
+const SCOPE_PREFIX = "@open-ocpp-trace/";
+
+/**
+ * Lists why packages cannot be released together at one version: every
+ * manifest must carry the same `version`, and every `@open-ocpp-trace/*`
+ * dependency must be one of these packages, pinned to that exact version.
+ * An empty list means the packages are in lockstep.
+ */
+export function lockstepProblems(manifests: readonly Manifest[]): string[] {
+  if (manifests.length === 0) return ["no package to release"];
+  const problems: string[] = [];
+  const nameOf = (manifest: Manifest): string => String(manifest.name);
+  const names = new Set(manifests.map(nameOf));
+  const [first] = manifests;
+  const version = first?.version;
+
+  for (const manifest of manifests) {
+    if (typeof manifest.version !== "string") {
+      problems.push(`${nameOf(manifest)} has no version`);
+    } else if (typeof version === "string" && manifest.version !== version) {
+      problems.push(
+        `${nameOf(manifest)} is at ${manifest.version}, not ${version} like ${nameOf(first ?? {})}`,
+      );
+    }
+    for (const field of DEPENDENCY_FIELDS) {
+      const dependencies = manifest[field];
+      if (!isObject(dependencies)) continue;
+      for (const [name, spec] of Object.entries(dependencies)) {
+        if (!name.startsWith(SCOPE_PREFIX)) continue;
+        const where = `${nameOf(manifest)} ${field}[${JSON.stringify(name)}]`;
+        if (!names.has(name)) {
+          problems.push(`${where} is not released with the other packages`);
+        } else if (typeof version === "string" && spec !== version) {
+          problems.push(`${where} is ${String(spec)}, not ${version}`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
 function readManifest(path: string): Manifest {
   const manifest: unknown = JSON.parse(readFileSync(path, "utf8"));
   if (!isObject(manifest)) throw new Error(`${path} is not a JSON object`);
   return manifest;
 }
 
+const tar = (...args: string[]): string => execFileSync("tar", args, { encoding: "utf8" });
+
+function tarballManifest(tarball: string): unknown {
+  return JSON.parse(tar("-xzOf", tarball, "package/package.json"));
+}
+
 function inspectTarball(tarball: string): string[] {
-  const tar = (...args: string[]): string => execFileSync("tar", args, { encoding: "utf8" });
   const files = tar("-tzf", tarball)
     .split("\n")
     .filter((entry) => entry !== "" && !entry.endsWith("/"))
     .map((entry) => entry.replace(/^package\//, ""));
-  const manifest: unknown = JSON.parse(tar("-xzOf", tarball, "package/package.json"));
+  const manifest = tarballManifest(tarball);
   if (!isObject(manifest)) return ["package.json is not a JSON object"];
   return inspectPackage(manifest, files);
 }
 
 function main(args: readonly string[]): number {
   const [command, path] = args;
+  if (command === "lockstep" && path !== undefined) {
+    const tarballs = args.slice(1);
+    const manifests: Manifest[] = [];
+    const problems: string[] = [];
+    for (const tarball of tarballs) {
+      const manifest = tarballManifest(tarball);
+      if (isObject(manifest)) manifests.push(manifest);
+      else problems.push(`${tarball}: package.json is not a JSON object`);
+    }
+    problems.push(...lockstepProblems(manifests));
+    for (const problem of problems) console.error(`lockstep: ${problem}`);
+    if (problems.length > 0) return 1;
+    console.log(String(manifests[0]?.version));
+    return 0;
+  }
   if (command === "strip" && path !== undefined) {
     writeFileSync(path, `${JSON.stringify(stripSourceCondition(readManifest(path)), null, 2)}\n`);
     return 0;
@@ -131,7 +196,9 @@ function main(args: readonly string[]): number {
     if (problems.length === 0) console.log(`${path}: contents and exports OK`);
     return problems.length === 0 ? 0 : 1;
   }
-  console.error("usage: release-manifest.ts strip <package.json> | inspect <tarball>");
+  console.error(
+    "usage: release-manifest.ts strip <package.json> | inspect <tarball> | lockstep <tarball>...",
+  );
   return 2;
 }
 
