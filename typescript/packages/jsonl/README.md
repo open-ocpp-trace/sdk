@@ -213,16 +213,24 @@ throws a `JsonlWriteError`.
 
 `validate` (default `true`) checks the record with core's `validateRecord`
 before writing it; an invalid record is not written. Validation sees the
-value as passed, before any `toJSON`. With `validate: false`, any value
-whose `JSON.stringify` output is a JSON object is written. A `validate`
-that is not a boolean throws a `TypeError`.
+value as passed, so a valid record with a top-level `toJSON` method, own
+or inherited, is rejected too (kind `to-json`): `JSON.stringify` would
+write that method's result instead of the validated fields. With
+`validate: false`, any value whose `JSON.stringify` output is a JSON
+object is written. A `validate` that is not a boolean throws a
+`TypeError`.
+
+The record is typed `TraceRecord`, as the reader yields it, whenever
+validation may be on; it is `unknown` only with `{ validate: false }`.
 
 ### `serializeRecords` and `writeRecords`: a stream
 
 `records` is an `Iterable` or an `AsyncIterable`, such as an array or an
-async generator. Both functions take the same `{ validate? }` option, check
-it when called and stop at the first record that cannot be written; lines
-already produced stay valid.
+async generator, typed `RecordSource`: `TraceRecord`s by default, so
+`readRecords` output is written without a cast, and any values with
+`{ validate: false }`. Both functions take the same `{ validate? }`
+option, check it when called and stop at the first record that cannot be
+written; lines already produced stay valid.
 
 `serializeRecords(records, options)` returns an `AsyncIterable<string>` of
 lines, one per record, pulled lazily:
@@ -312,14 +320,21 @@ await piped;
 | Property | Meaning                                                                                       |
 | -------- | --------------------------------------------------------------------------------------------- |
 | `index`  | 0-based position of the record in its stream; `undefined` for `serializeRecord`               |
-| `kind`   | `"validation"`, `"unserializable"`, `"no-output"` or `"not-an-object"`                        |
+| `kind`   | `"validation"`, `"to-json"`, `"unserializable"`, `"no-output"` or `"not-an-object"`           |
 | `issues` | `ValidationIssue[]` from core for a `validation` error; empty otherwise                       |
 | `cause`  | core's `TraceValidationError` (`validation`) or the `JSON.stringify` error (`unserializable`) |
 
 - `validation`: the record is not a valid trace record.
+- `to-json`: validation is on and the record, though valid, has a
+  top-level `toJSON` method (own or inherited) whose result would be
+  written in place of the validated fields.
 - `unserializable`: `JSON.stringify` threw, for a circular structure, a
   `BigInt` or a throwing `toJSON`.
 - `no-output`: `JSON.stringify` returned nothing, for a top-level
-  `undefined`, function or symbol (only with `validate: false`).
+  `undefined`, function or symbol, or a top-level `toJSON` returning
+  `undefined`.
 - `not-an-object`: the output is JSON but not an object, such as a string,
-  `null` or an array (only with `validate: false`).
+  `null` or an array.
+
+`no-output` and `not-an-object` are only reachable with `validate: false`:
+validation requires an object and rejects a top-level `toJSON`.

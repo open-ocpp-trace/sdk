@@ -4,15 +4,10 @@ import { readRecords } from "../../src/reader/index.ts";
 import { serializeRecord, serializeRecords, writeRecords } from "../../src/writer/index.ts";
 import { fixtureTraces } from "../../../core/test/support/corpus.ts";
 import { callResult } from "../../../core/test/support/records.ts";
-import { utf8 } from "../support/chunks.ts";
+import { collect, utf8 } from "../support/chunks.ts";
+import { untyped, untypedAll } from "./untyped.ts";
 
 const traces = fixtureTraces();
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
-}
 
 describe("writer and reader round trip", () => {
   it("covers fixtures listed in the manifest", () => {
@@ -20,7 +15,7 @@ describe("writer and reader round trip", () => {
   });
 
   describe.each(traces.map((trace) => [trace.name, trace] as const))("%s", (_, trace) => {
-    const records: unknown[] = trace.lines.map((line) => JSON.parse(line.text) as unknown);
+    const records = untypedAll(trace.lines.map((line) => JSON.parse(line.text) as unknown));
 
     it("serialises every record as JSON.stringify output plus LF", () => {
       expect(records.length).toBeGreaterThan(0);
@@ -52,7 +47,7 @@ describe("writer and reader round trip", () => {
       meta: { producer: "test", nested: { deep: true } },
       raw: '[3,"msg-1",{}]',
     };
-    const [read] = await collect(readRecords([utf8(serializeRecord(record))]));
+    const [read] = await collect(readRecords([utf8(serializeRecord(untyped(record)))]));
     expect(read).toStrictEqual(record);
     expect(Object.keys(read ?? {})).toEqual(Object.keys(record));
   });
@@ -60,7 +55,7 @@ describe("writer and reader round trip", () => {
   it("round-trips non-ASCII text, a lone surrogate and U+2028", async () => {
     const text = `été 😀 ${String.fromCharCode(0xd800)} ${String.fromCharCode(0x2028)}`;
     const record = { ...callResult(), payload: { text } };
-    const [read] = await collect(readRecords([utf8(serializeRecord(record))]));
+    const [read] = await collect(readRecords([utf8(serializeRecord(untyped(record)))]));
     expect(read).toStrictEqual(record);
   });
 });

@@ -4,6 +4,7 @@ import { TraceValidationError } from "@open-ocpp-trace/core";
 
 import { JsonlWriteError, serializeRecord } from "../../src/writer/index.ts";
 import { callError, callResult, fullCall } from "../../../core/test/support/records.ts";
+import { untyped } from "./untyped.ts";
 
 function caught(action: () => unknown): unknown {
   try {
@@ -20,7 +21,7 @@ describe("serializeRecord", () => {
     ["CALLRESULT", callResult()],
     ["CALLERROR", callError()],
   ])("writes a %s as JSON.stringify output plus one LF", (_, record) => {
-    const line = serializeRecord(record);
+    const line = serializeRecord(untyped(record));
     expect(line).toBe(`${JSON.stringify(record)}\n`);
     expect(line.indexOf("\n")).toBe(line.length - 1);
     expect(JSON.parse(line)).toStrictEqual(record);
@@ -33,7 +34,7 @@ describe("serializeRecord", () => {
       meta: { z: true, a: [1, "x"] },
       raw: '[3,"msg-1",{}]',
     };
-    const line = serializeRecord(record);
+    const line = serializeRecord(untyped(record));
     expect(line).toBe(`${JSON.stringify(record)}\n`);
     expect(Object.keys(JSON.parse(line) as object)).toEqual(Object.keys(record));
   });
@@ -41,7 +42,7 @@ describe("serializeRecord", () => {
   it("escapes characters that would break the line framing", () => {
     const lone = String.fromCharCode(0xd800);
     const record = { ...callResult(), payload: { text: `a\nb\rc${lone}` } };
-    const line = serializeRecord(record);
+    const line = serializeRecord(untyped(record));
     expect(line.slice(0, -1)).not.toMatch(/[\n\r]/);
     expect(line).toContain("\\ud800");
   });
@@ -49,7 +50,7 @@ describe("serializeRecord", () => {
   describe("with validation (default)", () => {
     it("throws a validation JsonlWriteError wrapping the core issues", () => {
       const record = { ...callResult(), messageType: "NOPE" };
-      const error = caught(() => serializeRecord(record));
+      const error = caught(() => serializeRecord(untyped(record)));
       expect(error).toBeInstanceOf(JsonlWriteError);
       const writeError = error as JsonlWriteError;
       expect(writeError.kind).toBe("validation");
@@ -61,14 +62,82 @@ describe("serializeRecord", () => {
     });
 
     it("rejects a non-object record", () => {
-      const error = caught(() => serializeRecord("not a record"));
+      const error = caught(() => serializeRecord(untyped("not a record")));
       expect(error).toMatchObject({ name: "JsonlWriteError", kind: "validation" });
+    });
+
+    describe("a valid record with a top-level toJSON", () => {
+      const overrides = [
+        ["a string", () => "x"],
+        ["undefined", () => undefined],
+        ["an empty object", () => ({})],
+      ] as const;
+
+      it.each(overrides)("throws to-json for a toJSON returning %s", (_, toJSON) => {
+        const error = caught(() => serializeRecord(untyped({ ...callResult(), toJSON })));
+        expect(error).toBeInstanceOf(JsonlWriteError);
+        expect(error).toMatchObject({ kind: "to-json", issues: [] });
+        expect((error as JsonlWriteError).message).toContain("toJSON");
+      });
+
+      it("throws to-json for an inherited toJSON", () => {
+        const record: unknown = Object.assign(
+          Object.create({ toJSON: () => ({}) }) as object,
+          callResult(),
+        );
+        const error = caught(() => serializeRecord(untyped(record)));
+        expect(error).toMatchObject({ name: "JsonlWriteError", kind: "to-json" });
+      });
+
+      it("reports core's issues first for an invalid record", () => {
+        const record = { ...callResult(), direction: "sideways", toJSON: () => ({}) };
+        const error = caught(() => serializeRecord(untyped(record)));
+        expect(error).toMatchObject({ kind: "validation" });
+      });
+
+      it("maps a throwing toJSON getter to unserializable", () => {
+        const cause = new Error("getter");
+        const record = Object.defineProperty(callResult(), "toJSON", {
+          get: () => {
+            throw cause;
+          },
+        });
+        const error = caught(() => serializeRecord(untyped(record)));
+        expect(error).toMatchObject({ kind: "unserializable" });
+        expect((error as JsonlWriteError).cause).toBe(cause);
+      });
+
+      it("writes the toJSON result as before with validate: false", () => {
+        const record = (toJSON: () => unknown): unknown => ({ ...callResult(), toJSON });
+        expect(
+          caught(() =>
+            serializeRecord(
+              record(() => "x"),
+              { validate: false },
+            ),
+          ),
+        ).toMatchObject({ kind: "not-an-object" });
+        expect(
+          caught(() =>
+            serializeRecord(
+              record(() => undefined),
+              { validate: false },
+            ),
+          ),
+        ).toMatchObject({ kind: "no-output" });
+        expect(
+          serializeRecord(
+            record(() => ({})),
+            { validate: false },
+          ),
+        ).toBe("{}\n");
+      });
     });
 
     it("validates by default and when validate is true", () => {
       const record = { ...callResult(), timestamp: "yesterday" };
-      expect(() => serializeRecord(record)).toThrow(JsonlWriteError);
-      expect(() => serializeRecord(record, { validate: true })).toThrow(JsonlWriteError);
+      expect(() => serializeRecord(untyped(record))).toThrow(JsonlWriteError);
+      expect(() => serializeRecord(untyped(record), { validate: true })).toThrow(JsonlWriteError);
     });
   });
 
@@ -120,7 +189,7 @@ describe("serializeRecord", () => {
       ["a BigInt in the payload", bigint],
     ])("throws unserializable for %s, validated or not", (_, make) => {
       for (const validate of [true, false]) {
-        const error = caught(() => serializeRecord(make(), { validate }));
+        const error = caught(() => serializeRecord(untyped(make()), { validate }));
         expect(error).toMatchObject({ name: "JsonlWriteError", kind: "unserializable" });
         expect((error as JsonlWriteError).cause).toBeInstanceOf(TypeError);
       }
@@ -135,7 +204,7 @@ describe("serializeRecord", () => {
 
     it("keeps the error thrown by a toJSON method as the cause", () => {
       const cause = new Error("boom");
-      const error = caught(() => serializeRecord(throwingToJSON(cause)));
+      const error = caught(() => serializeRecord(untyped(throwingToJSON(cause))));
       expect(error).toMatchObject({ kind: "unserializable" });
       expect((error as JsonlWriteError).cause).toBe(cause);
     });
@@ -146,15 +215,15 @@ describe("serializeRecord", () => {
       ...callResult(),
       payload: { gone: undefined, fn: () => 1, nan: Number.NaN, list: [undefined] },
     };
-    expect(JSON.parse(serializeRecord(record))).toStrictEqual({
+    expect(JSON.parse(serializeRecord(untyped(record)))).toStrictEqual({
       ...callResult(),
       payload: { nan: null, list: [null] },
     });
   });
 
   it("rejects a validate option that is not a boolean", () => {
-    expect(() => serializeRecord(callResult(), { validate: "no" as unknown as boolean })).toThrow(
-      TypeError,
-    );
+    expect(() =>
+      serializeRecord(untyped(callResult()), { validate: "no" as unknown as boolean }),
+    ).toThrow(TypeError);
   });
 });

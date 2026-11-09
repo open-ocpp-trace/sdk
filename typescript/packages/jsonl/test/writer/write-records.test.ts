@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import type { TraceRecord } from "@open-ocpp-trace/core";
+
 import { JsonlWriteError, serializeRecords, writeRecords } from "../../src/writer/index.ts";
 import { callError, callResult, fullCall } from "../../../core/test/support/records.ts";
+import { collect } from "../support/chunks.ts";
+import { untyped, untypedAll } from "./untyped.ts";
 
-const RECORDS = [fullCall(), callResult(), callError()];
-const INVALID = { ...callResult(), direction: "sideways" };
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
-}
+const RECORDS = untypedAll([fullCall(), callResult(), callError()]);
+const INVALID = untyped({ ...callResult(), direction: "sideways" });
 
 async function* asyncOf<T>(items: readonly T[]): AsyncGenerator<T> {
   for (const item of items) {
@@ -42,7 +40,11 @@ describe("serializeRecords", () => {
     const lines: string[] = [];
     let error: unknown;
     try {
-      for await (const line of serializeRecords([fullCall(), INVALID, callResult()])) {
+      for await (const line of serializeRecords([
+        RECORDS[0] as TraceRecord,
+        INVALID,
+        RECORDS[1] as TraceRecord,
+      ])) {
         lines.push(line);
       }
     } catch (caught) {
@@ -56,7 +58,11 @@ describe("serializeRecords", () => {
   });
 
   it("carries the index of an unserialisable record", async () => {
-    const records = [callResult(), callResult(), { ...callResult(), payload: { n: 2n } }];
+    const records = untypedAll([
+      callResult(),
+      callResult(),
+      { ...callResult(), payload: { n: 2n } },
+    ]);
     await expect(collect(serializeRecords(records))).rejects.toMatchObject({
       kind: "unserializable",
       index: 2,
@@ -70,8 +76,8 @@ describe("serializeRecords", () => {
 
   it("lets an error of the source propagate unchanged", async () => {
     const failure = new Error("source failed");
-    async function* failing(): AsyncGenerator<unknown> {
-      yield callResult();
+    async function* failing(): AsyncGenerator<TraceRecord> {
+      yield untyped(callResult());
       throw failure;
     }
     await expect(collect(serializeRecords(failing()))).rejects.toBe(failure);
@@ -99,7 +105,7 @@ describe("writeRecords", () => {
     const log: string[] = [];
     let inFlight = 0;
     let maxInFlight = 0;
-    function* source(): Generator<unknown> {
+    function* source(): Generator<TraceRecord> {
       for (const [index, record] of RECORDS.entries()) {
         log.push(`pull ${index}`);
         yield record;
@@ -156,7 +162,7 @@ describe("writeRecords", () => {
 
   it("rejects with the record index and keeps the lines written before it", async () => {
     const sink = memorySink();
-    await expect(writeRecords([fullCall(), INVALID], sink)).rejects.toMatchObject({
+    await expect(writeRecords([RECORDS[0] as TraceRecord, INVALID], sink)).rejects.toMatchObject({
       name: "JsonlWriteError",
       kind: "validation",
       index: 1,
@@ -167,6 +173,72 @@ describe("writeRecords", () => {
   it("passes the validate option on", async () => {
     const sink = memorySink();
     await expect(writeRecords([INVALID], sink, { validate: false })).resolves.toBe(1);
+  });
+
+  describe("closes the source once", () => {
+    /** A sync source over `items` that counts its `return()` calls. */
+    function syncSource(
+      items: readonly TraceRecord[],
+    ): Iterable<TraceRecord> & { returns: number } {
+      const source = {
+        returns: 0,
+        [Symbol.iterator]: (): Iterator<TraceRecord> => {
+          let next = 0;
+          return {
+            next: (): IteratorResult<TraceRecord> =>
+              next < items.length
+                ? { done: false, value: items[next++] as TraceRecord }
+                : { done: true, value: undefined },
+            return: (): IteratorResult<TraceRecord> => {
+              source.returns += 1;
+              return { done: true, value: undefined };
+            },
+          };
+        },
+      };
+      return source;
+    }
+
+    /** An async source over `items` that counts its `return()` calls. */
+    function asyncSource(
+      items: readonly TraceRecord[],
+    ): AsyncIterable<TraceRecord> & { readonly returns: number } {
+      const sync = syncSource(items);
+      return {
+        get returns(): number {
+          return sync.returns;
+        },
+        [Symbol.asyncIterator]: (): AsyncIterator<TraceRecord> => {
+          const iterator = sync[Symbol.iterator]();
+          return {
+            next: async () => iterator.next(),
+            return: async () => iterator.return?.() ?? { done: true, value: undefined },
+          };
+        },
+      };
+    }
+
+    const sources = [
+      ["a sync source", syncSource],
+      ["an async source", asyncSource],
+    ] as const;
+
+    it.each(sources)("when the sink rejects, from %s", async (_, make) => {
+      const source = make(RECORDS);
+      const failure = new Error("disk full");
+      const sink = { write: (): Promise<void> => Promise.reject(failure) };
+      await expect(writeRecords(source, sink)).rejects.toBe(failure);
+      expect(source.returns).toBe(1);
+    });
+
+    it.each(sources)("when a record is invalid, from %s", async (_, make) => {
+      const source = make([...RECORDS.slice(0, 1), INVALID, ...RECORDS.slice(1)]);
+      await expect(writeRecords(source, memorySink())).rejects.toMatchObject({
+        kind: "validation",
+        index: 1,
+      });
+      expect(source.returns).toBe(1);
+    });
   });
 
   it("rejects a sink without a write method", async () => {

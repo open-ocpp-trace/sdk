@@ -1,7 +1,13 @@
+import type { TraceRecord } from "@open-ocpp-trace/core";
+
 import { checkSerializeOptions, serializeAt, type SerializeRecordOptions } from "./serialize.ts";
 
-/** A sequence of records to write, such as an array or an async generator. */
-export type RecordSource = AsyncIterable<unknown> | Iterable<unknown>;
+/**
+ * A sequence of records to write, such as an array or an async generator.
+ * `RecordSource` holds `TraceRecord`s, as `readRecords` yields them;
+ * `RecordSource<unknown>` is accepted with `{ validate: false }`.
+ */
+export type RecordSource<T = TraceRecord> = AsyncIterable<T> | Iterable<T>;
 
 /**
  * Where `writeRecords` sends its lines. A returned promise is awaited
@@ -28,13 +34,21 @@ export interface LineSink {
  */
 export function serializeRecords(
   records: RecordSource,
+  options?: SerializeRecordOptions,
+): AsyncIterable<string>;
+export function serializeRecords(
+  records: RecordSource<unknown>,
+  options: SerializeRecordOptions & { readonly validate: false },
+): AsyncIterable<string>;
+export function serializeRecords(
+  records: RecordSource<unknown>,
   options: SerializeRecordOptions = {},
 ): AsyncIterable<string> {
   return lines(records, checkSerializeOptions(options));
 }
 
 async function* lines(
-  records: RecordSource,
+  records: RecordSource<unknown>,
   validate: boolean,
 ): AsyncGenerator<string, void, undefined> {
   let index = 0;
@@ -58,8 +72,18 @@ async function* lines(
  *
  * @returns the number of records written.
  */
-export async function writeRecords(
+export function writeRecords(
   records: RecordSource,
+  sink: LineSink,
+  options?: SerializeRecordOptions,
+): Promise<number>;
+export function writeRecords(
+  records: RecordSource<unknown>,
+  sink: LineSink,
+  options: SerializeRecordOptions & { readonly validate: false },
+): Promise<number>;
+export async function writeRecords(
+  records: RecordSource<unknown>,
   sink: LineSink,
   options: SerializeRecordOptions = {},
 ): Promise<number> {
@@ -67,7 +91,7 @@ export async function writeRecords(
     throw new TypeError("sink must have a write(chunk) method");
   }
   let count = 0;
-  for await (const line of serializeRecords(records, options)) {
+  for await (const line of lines(records, checkSerializeOptions(options))) {
     await sink.write(line);
     count += 1;
   }

@@ -5,14 +5,25 @@ import type { ValidationIssue } from "@open-ocpp-trace/core";
  *
  * - `validation`: the record is not a valid trace record; `issues` lists
  *   every broken rule and `cause` holds core's `TraceValidationError`.
+ * - `to-json`: validation is on and the record, though valid, has a
+ *   top-level `toJSON` method (own or inherited), whose result
+ *   `JSON.stringify` would write in place of the validated fields.
  * - `unserializable`: `JSON.stringify` threw, for a circular structure, a
  *   `BigInt` or a throwing `toJSON`; `cause` holds the original error.
  * - `no-output`: `JSON.stringify` returned nothing, for a top-level
- *   `undefined`, function or symbol (only reachable with `validate: false`).
+ *   `undefined`, function or symbol, or a top-level `toJSON` returning
+ *   `undefined` (only reachable with `validate: false`, since validation
+ *   requires an object and rejects a top-level `toJSON`).
  * - `not-an-object`: the output is JSON but not an object, such as a string,
- *   `null` or an array (only reachable with `validate: false`).
+ *   `null` or an array (only reachable with `validate: false`, for the same
+ *   reason).
  */
-export type JsonlWriteErrorKind = "validation" | "unserializable" | "no-output" | "not-an-object";
+export type JsonlWriteErrorKind =
+  | "validation"
+  | "to-json"
+  | "unserializable"
+  | "no-output"
+  | "not-an-object";
 
 export interface JsonlWriteErrorInit {
   /** 0-based position of the record in its input sequence, if any. */
