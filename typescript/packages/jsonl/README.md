@@ -11,6 +11,18 @@ the file or the stream.
 
 ## Install
 
+The package is published to
+[GitHub Packages](https://github.com/orgs/open-ocpp-trace/packages), whose
+npm registry needs a GitHub token with `read:packages`, even for a public
+package. Map the scope in the project's `.npmrc`:
+
+```ini
+@open-ocpp-trace:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+then, with `GITHUB_TOKEN` set:
+
 ```sh
 npm install @open-ocpp-trace/jsonl
 ```
