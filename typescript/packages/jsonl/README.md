@@ -101,8 +101,8 @@ for await (const record of readRecords(createReadStream("trace.jsonl"))) {
 
 Browsers, Deno and Bun: a `ReadableStream<Uint8Array>`, such as
 `Response.body` or `Blob.stream()`, is async iterable where the runtime
-supports it (Chrome and Edge 124, Firefox 110, Safari 27, Node.js 16.5,
-Deno, Bun):
+supports it (recent Chromium and Firefox releases, Node.js, Deno, Bun; check
+your browser targets):
 
 ```ts
 const response = await fetch("/traces/session.jsonl");
@@ -112,7 +112,8 @@ for await (const record of readRecords(response.body)) {
 }
 ```
 
-Where `ReadableStream` is not async iterable (older Safari), wrap its reader:
+Where `ReadableStream` is not async iterable (some Safari releases), wrap its
+reader:
 
 ```ts
 async function* chunks(stream: ReadableStream<Uint8Array>): AsyncGenerator<Uint8Array> {
