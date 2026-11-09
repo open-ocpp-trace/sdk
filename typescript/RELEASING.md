@@ -1,10 +1,5 @@
 # Releasing the TypeScript packages
 
-> **Nothing is published yet.** Do not run the release workflow, not even
-> a dry run, until the maintainers have created and protected the
-> `github-packages` environment, as described below: the first run that
-> names a missing environment creates it unprotected.
-
 Each package of this workspace (`@open-ocpp-trace/core`,
 `@open-ocpp-trace/jsonl`) is released on its own by the manually started
 workflow
@@ -66,8 +61,10 @@ hand.
 
 ## Prerequisites (once)
 
-These need admin rights on the GitHub organization and repository; they
-are not done yet.
+These need admin rights on the GitHub organization and repository.
+Prerequisites 1 and 2 are done; do not run the workflow, not even a dry
+run, while the environment is missing or unprotected: the first run that
+names a missing environment creates it unprotected.
 
 1. **GitHub environment `github-packages`** (repository Settings →
    Environments), before any run: required reviewers (the maintainers)
