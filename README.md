@@ -24,7 +24,7 @@ which is authoritative and independent of this repository.
 | Running the shared corpus against those implementations | this repository |
 
 The SDK consumes a **pinned revision** of the specification's schema and
-fixtures ([#2](https://github.com/open-ocpp-trace/sdk/issues/2)). It never
+fixtures ([`conformance/`](conformance/README.md)). It never
 keeps its own copy of the schema. A change to the format is proposed in the
 specification repository first, then implemented here.
 

@@ -9,7 +9,7 @@ independent of each other and of the specification.
 ```text
 sdk/
 ├── .github/            CI workflows, path-scoped per implementation   (planned, #3)
-├── conformance/        Pinned specification corpus and how to run it   (planned, #2)
+├── conformance/        Pinned specification corpus and how to run it   (present)
 ├── docs/               Cross-language documentation                    (present)
 ├── examples/           Runnable usage examples                         (planned)
 ├── typescript/         TypeScript implementation, Bun + Vite+          (planned, #5)
@@ -42,15 +42,15 @@ The SDK owns implementations of the format and their verification:
 
 - language packages that model, validate, read and write records;
 - the procedure that runs a pinned revision of the specification corpus
-  against each implementation (#2).
+  against each implementation ([`conformance/`](../conformance/README.md)).
 
 ### Single source of truth for the schema
 
 The SDK does not maintain a copy of the schema. Each implementation either
 derives its types from the pinned upstream schema or checks them against it in
 its tests (#6), so that a divergence fails the build instead of shipping. The
-pinned revision is an immutable tag or commit SHA, and changing it is a
-reviewed change in this repository (#2).
+pinned revision is a full commit SHA, and changing it is a reviewed change in
+this repository: see [`conformance/README.md`](../conformance/README.md).
 
 When an implementation needs a change to the format, the change is proposed
 in the specification repository first. No implementation adds fields, enum
@@ -182,6 +182,7 @@ The SDK version and the format version are distinct and evolve independently.
   (#3).
 - **Shared assets are language-neutral.** `conformance/` and `docs/` contain
   data and prose, never code that requires one language's runtime to use them.
+  `conformance/fetch.sh` needs only a POSIX shell and `git`.
 - **Published packages are runtime-neutral.** Development tools, such as Bun,
   are not dependencies of the published packages.
 - **Format changes start upstream.** A pull request here that would alter the
