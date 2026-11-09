@@ -58,7 +58,7 @@ Two kinds of requirement are involved:
 
 | Runtime | Status | Evidence |
 | --- | --- | --- |
-| Node.js 22 | tested | Job `TypeScript (Node.js 22)` runs the whole test suite against the packages' sources. Job `Clean-consumer smoke test` installs the packed tarballs on Node.js 22, imports every entry point and writes and reads one record (`typescript/scripts/smoke-consumer.sh`, `typescript/scripts/smoke-consumer/smoke.mjs`). |
+| Node.js 22 | tested | Job `TypeScript (Node.js 22)` runs the whole test suite against the packages' sources. Job `Clean-consumer smoke test` verifies the packed tarballs (`typescript/scripts/verify-packages.sh`), installs them on Node.js 22, imports every entry point and writes and reads one record (`typescript/scripts/smoke-consumer.sh`, `typescript/scripts/smoke-consumer/smoke.mjs`). |
 | Node.js 24 | tested, sources only | Job `TypeScript (Node.js 24)` runs the whole test suite against the sources. The packed packages are not exercised on 24. |
 | Node.js 26 | untested | Allowed by the development toolchain range only; in no CI job. |
 | Node.js below 22 | untested | In no CI job; the packages declare no `engines`. |
@@ -78,6 +78,7 @@ Two kinds of requirement are involved:
 
 | Claim | Evidence |
 | --- | --- |
+| The published exports and types resolve: only `package.json`, `README.md`, `LICENSE` and `dist/` are packed, every `exports` target exists, and TypeScript resolves the types of every entry point under the `node16` (ESM) and `bundler` resolutions | Job `Clean-consumer smoke test`: `typescript/scripts/verify-packages.sh` on each packed tarball (`scripts/release-manifest.ts inspect`, `publint --strict`, `attw --profile esm-only`) |
 | The packed type declarations type-check with TypeScript 6.0.3 under the `bundler` and `nodenext` module resolutions | Job `Clean-consumer smoke test`: `tsc --noEmit` on `typescript/scripts/smoke-consumer/consumer.ts` with `typescript/scripts/smoke-consumer/tsconfig.bundler.json` and `tsconfig.nodenext.json` |
 
 Other TypeScript versions are not tested.

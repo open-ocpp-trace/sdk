@@ -32,6 +32,9 @@ Closes #
 - [ ] This does not change the trace format, or the change is already merged
       in [open-ocpp-trace/specification](https://github.com/open-ocpp-trace/specification)
       and the corpus is re-pinned here.
-- [ ] Package README, `CHANGELOG.md` and
+- [ ] Package README and
       [docs/compatibility.md](https://github.com/open-ocpp-trace/sdk/blob/main/docs/compatibility.md)
       are updated where users see the change.
+- [ ] A change visible to package users is described in the summary above
+      (breaking: `!` and a `BREAKING CHANGE:` footer). `CHANGELOG.md` is
+      written in the release pull request, not here.

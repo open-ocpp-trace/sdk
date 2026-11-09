@@ -179,7 +179,7 @@ The SDK version and the format version are distinct and evolve independently.
   implementation's tools.
 - **CI is path-scoped.** A change under `typescript/` runs the TypeScript
   checks; a documentation-only change does not run every language's build
-  (#3).
+  ([`.github/workflows/typescript.yml`](../.github/workflows/typescript.yml)).
 - **Shared assets are language-neutral.** `conformance/` and `docs/` contain
   data and prose, never code that requires one language's runtime to use them.
   `conformance/fetch.sh` needs only a POSIX shell and `git`.

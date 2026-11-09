@@ -70,7 +70,7 @@ bun install --frozen-lockfile   # install the exact versions in bun.lock
 vp check                        # format check, lint and type check
 vp test                         # run the tests once
 vp run -r pack                  # build every package into its dist/
-vp run smoke                    # pack, install and import from a clean consumer
+vp run smoke                    # pack, verify the tarballs, install and import from a clean consumer
 ```
 
 `vp check --fix` applies formatting and safe lint fixes. Run it, then
@@ -79,8 +79,14 @@ vp run smoke                    # pack, install and import from a clean consumer
 Shell scripts are checked with `shellcheck`:
 
 ```sh
-shellcheck conformance/fetch.sh typescript/scripts/smoke-consumer.sh
+shellcheck conformance/fetch.sh typescript/scripts/*.sh
 ```
+
+`vp run smoke` builds and packs both packages, checks each tarball with
+`typescript/scripts/verify-packages.sh` (packed files, `exports` targets,
+`publint --strict`, `attw --profile esm-only`), then installs the tarballs in
+a project outside the workspace, imports every entry point under Node.js and
+Bun and type-checks a TypeScript consumer.
 
 ### What CI requires
 
@@ -91,14 +97,14 @@ itself, and on every push to `main`. Its jobs are:
 
 | Job | Runs |
 | --- | --- |
-| `Shellcheck shell scripts` | `shellcheck` on the shell scripts |
+| `Shellcheck shell scripts` | `shellcheck conformance/fetch.sh typescript/scripts/*.sh` |
 | `TypeScript (Node.js 22)`, `TypeScript (Node.js 24)` | `conformance/fetch.sh`, then install, `vp check`, `vp test`, `vp run -r pack` |
-| `Clean-consumer smoke test` | `typescript/scripts/smoke-consumer.sh` on Node.js 22 |
+| `Clean-consumer smoke test` | `typescript/scripts/smoke-consumer.sh` (`vp run smoke`) on Node.js 22, including `typescript/scripts/verify-packages.sh` |
 | `ci-result` | succeeds when every job above succeeded or was skipped by the path filter |
 
 `ci-result` is the only required check. It always reports, so a
 documentation-only pull request gets a green check without running the
-builds. A pull request is mergeable only with `ci-result` green.
+builds.
 
 ## Tests
 
@@ -126,8 +132,10 @@ builds. A pull request is mergeable only with `ci-result` green.
 - **Keep documentation in step.** A change to an API, a supported version or
   a runtime claim updates the package README and
   [docs/compatibility.md](docs/compatibility.md) in the same pull request.
-- **Release notes.** A change visible to package users adds an entry to that
-  package's `CHANGELOG.md` (see [Release notes](#release-notes)).
+- **Describe user-visible changes.** A change visible to package users says
+  so in the pull request description, in words a package user understands.
+  Do not edit `CHANGELOG.md`: entries are written in the release pull request
+  (see [Release notes](#release-notes)).
 
 ### Review
 
@@ -148,6 +156,13 @@ Each package keeps its own `CHANGELOG.md`, following
 [Common Changelog](https://common-changelog.org/): written for package users,
 grouped by impact (`Changed`, `Added`, `Removed`, `Fixed`), with breaking
 changes stated first and explicitly. Do not paste the commit log.
+
+The changelog has no `Unreleased` section: the maintainer preparing a
+release writes its entry in the release pull request, from the descriptions
+of the pull requests it ships. Breaking changes are marked **Breaking:**, and
+a package's first release reads `_Initial release._` instead of groups. The
+full rules are under
+[Changelog in typescript/RELEASING.md](typescript/RELEASING.md#changelog).
 
 Packages are released per package and per implementation. For TypeScript,
 the procedure is in [typescript/RELEASING.md](typescript/RELEASING.md), and
