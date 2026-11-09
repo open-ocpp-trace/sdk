@@ -12,7 +12,7 @@ sdk/
 ├── conformance/        Pinned specification corpus and how to run it   (present)
 ├── docs/               Cross-language documentation                    (present)
 ├── examples/           Runnable usage examples                         (planned)
-├── typescript/         TypeScript implementation, Bun + Vite+          (planned, #5)
+├── typescript/         TypeScript implementation, Bun + Vite+          (present)
 │   └── packages/
 │       ├── core/       @open-ocpp-trace/core
 │       └── jsonl/      @open-ocpp-trace/jsonl

@@ -52,7 +52,7 @@ Out of scope, left to the applications that use the SDK:
 
 | Language | Directory | Packages | Status |
 | --- | --- | --- | --- |
-| TypeScript | `typescript/` | `@open-ocpp-trace/core`, `@open-ocpp-trace/jsonl` | planned ([#5](https://github.com/open-ocpp-trace/sdk/issues/5)) |
+| TypeScript | [`typescript/`](typescript/README.md) | `@open-ocpp-trace/core`, `@open-ocpp-trace/jsonl` | in development |
 
 Each implementation is self-contained: it owns its toolchain, dependencies,
 CI and releases. The repository root imposes no language toolchain, so working

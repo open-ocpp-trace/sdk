@@ -1,0 +1,19 @@
+{
+  "name": "open-ocpp-trace-typescript",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "pack": "vp run -r pack"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite-plus": "1.5.0"
+  },
+  "engines": {
+    "node": "^22.18 || ^24.11 || >=26"
+  },
+  "packageManager": "bun@1.4.4"
+}

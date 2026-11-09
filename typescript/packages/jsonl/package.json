@@ -1,0 +1,30 @@
+{
+  "name": "@open-ocpp-trace/jsonl",
+  "version": "0.0.0",
+  "description": "JSONL reading and writing of Open OCPP Trace records.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-ocpp-trace/sdk.git",
+    "directory": "typescript/packages/jsonl"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@open-ocpp-trace/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "pack": "vp pack"
+  },
+  "dependencies": {
+    "@open-ocpp-trace/core": "workspace:*"
+  }
+}
