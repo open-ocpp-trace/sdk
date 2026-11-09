@@ -163,8 +163,11 @@ The SDK version and the format version are distinct and evolve independently.
   change to its API is a major release, even if the format is unchanged.
 - Supporting a new format version that is backward compatible within the same
   format major is a minor SDK release.
-- Packages are versioned per package and per implementation: a TypeScript
-  release does not imply a release of another language.
+- Packages are versioned per implementation: a TypeScript release does not
+  imply a release of another language. Within the TypeScript implementation,
+  the packages share one version and are released together, because
+  `jsonl` pins the exact version of `core` (see
+  [typescript/RELEASING.md](../typescript/RELEASING.md#versioning)).
 - Each package declares the format versions it reads and writes. The
   compatibility matrix and the policy for unsupported versions are documented
   in [docs/compatibility.md](compatibility.md).

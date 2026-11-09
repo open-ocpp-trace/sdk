@@ -164,8 +164,8 @@ A pull request that changes what package users see adds its entry under
 new version heading. The full rules are under
 [Changelog in typescript/RELEASING.md](typescript/RELEASING.md#changelog).
 
-Packages are released per package and per implementation. For TypeScript,
-the procedure is in [typescript/RELEASING.md](typescript/RELEASING.md), and
+Packages are released per implementation. The TypeScript packages are
+released together, at one shared version; the procedure is in [typescript/RELEASING.md](typescript/RELEASING.md), and
 the changelogs are
 [`typescript/packages/core/CHANGELOG.md`](typescript/packages/core/CHANGELOG.md)
 and
