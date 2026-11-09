@@ -1,16 +1,27 @@
 # Releasing the TypeScript packages
 
-> **Nothing is published yet.** Do not run a release with `dry-run`
-> unticked until the maintainers have confirmed ownership of the
-> `@open-ocpp-trace` scope on npm, protected the `npm` environment and
-> then configured the trusted publisher, as described below. A dry run
-> publishes nothing.
+> **Nothing is published yet.** Do not run the release workflow, not even
+> a dry run, until the maintainers have created and protected the
+> `github-packages` environment, as described below: the first run that
+> names a missing environment creates it unprotected.
 
 Each package of this workspace (`@open-ocpp-trace/core`,
 `@open-ocpp-trace/jsonl`) is released on its own by the manually started
 workflow
 [`.github/workflows/release-typescript.yml`](../.github/workflows/release-typescript.yml).
 It is never triggered by a push or a tag.
+
+## Registry
+
+The packages are published to the npm registry of
+[GitHub Packages](https://github.com/orgs/open-ocpp-trace/packages),
+`https://npm.pkg.github.com`, not to npmjs.com. Installing from it needs a
+GitHub token with `read:packages`, even for a public package; the package
+READMEs show the consumer configuration.
+
+npmjs.com may be added later. It would start at the next version of each
+package: the tag of a version released on GitHub Packages already exists,
+and the workflow refuses to release a tagged version again.
 
 ## Versioning
 
@@ -28,7 +39,7 @@ It is never triggered by a push or a tag.
 - `jsonl` depends on the exact version of `core` found in the workspace
   (`workspace:*` is replaced at pack time). When both change, release
   `core` first: the workflow refuses to publish `jsonl` while the `core`
-  version it depends on is not on npm.
+  version it depends on is not on the registry.
 
 ## Changelog
 
@@ -54,47 +65,32 @@ hand.
 
 ## Prerequisites (once)
 
-These need admin rights on npm and on the GitHub repository; they are not
-done yet.
+These need admin rights on the GitHub organization and repository; they
+are not done yet.
 
-1. **npm scope.** Confirm that the `open-ocpp-trace` npm organization owns
-   the `@open-ocpp-trace` scope and add the maintainers to it.
-2. **GitHub environment `npm`** (Settings → Environments), before the
-   trusted publisher: required reviewers (the maintainers) and deployment
-   branches restricted to `main`. The publish job of every run, dry runs
-   included, waits for a reviewer and, with that branch rule, runs only
-   from `main`; on another branch only the `verify` job proves the
-   package. Enable « Prevent self-review » only when at least two people
-   are required reviewers, otherwise the person who starts a run can
-   never approve it.
+1. **GitHub environment `github-packages`** (repository Settings →
+   Environments), before any run: required reviewers (the maintainers)
+   and deployment branches restricted to `main`. The publish job of every
+   run, dry runs included, waits for a reviewer and, with that branch
+   rule, runs only from `main`; on another branch only the `verify` job
+   proves the package. Enable « Prevent self-review » only when at least
+   two people are required reviewers, otherwise the person who starts a
+   run can never approve it.
 
-   This order matters. npm trusts any run of `release-typescript.yml`
-   in the `npm` environment, and checks nothing else. GitHub creates a
-   missing environment, unprotected, the first time a job names it. A
-   trusted publisher configured before the environment is protected
-   would let anyone with write access dispatch a modified workflow from
-   a branch and publish.
+   The publish job gets `packages: write`. The in-workflow check that
+   refuses another branch than `main` lives in the workflow file itself,
+   so a modified copy on a branch can drop it; only the environment rule
+   stops such a run.
 
-3. **Trusted publisher, per package.** In the package settings on
-   npmjs.com, « Trusted Publisher », add GitHub Actions with:
-   - organization or user `open-ocpp-trace`, repository `sdk`;
-   - workflow filename `release-typescript.yml` (file name only, exact
-     case);
-   - environment `npm`;
-   - allowed actions: enable direct `npm publish`. New configurations
-     only allow `npm stage publish` by default, which this workflow does
-     not use.
-
-   npm configures a trusted publisher on an existing package, and a new
-   configuration must complete a successful publish within two days. How
-   the very first version of each package is published is to be decided
-   by the maintainers before the first release.
-
-4. **After the first trusted publish**, in the package settings,
-   « Publishing access », select « Require two-factor authentication and
-   disallow tokens », and revoke any automation token.
-5. The repository must stay public: npm only generates provenance for a
-   public package published from a public repository.
+2. **Package creation** (organization Settings → Packages): allow members
+   to create public packages, so the packages can be made public.
+3. **After the first publish of each package**, on its page under
+   [the organization's packages](https://github.com/orgs/open-ocpp-trace/packages):
+   - check that it is linked to `open-ocpp-trace/sdk` (the `repository`
+     field of its `package.json`);
+   - Package settings → « Danger Zone » → « Change visibility » →
+     public. A new package starts private. Making it public cannot be
+     undone.
 
 ## What the workflow verifies
 
@@ -112,9 +108,10 @@ The `verify` job, on the commit the workflow is started on:
    exists, the development-only `@open-ocpp-trace/source` condition and
    `workspace:` dependencies are gone, `publint --strict` and
    `attw --profile esm-only` pass (see the [README](README.md#packed-packages));
-5. checks that the tag and the npm version do not exist yet and, for a
-   real release, that the version is not `0.0.0` and that the
-   `@open-ocpp-trace/*` dependencies of the tarball are on npm.
+5. checks that the tag and the version do not exist yet on GitHub
+   Packages and, for a real release, that the version is not `0.0.0` and
+   that the `@open-ocpp-trace/*` dependencies of the tarball are
+   published.
 
 The `publish` job publishes **that** tarball, uploaded as an artifact; it
 does not rebuild.
@@ -122,9 +119,10 @@ does not rebuild.
 ## Permissions
 
 - The workflow token is read-only (`contents: read`) by default.
-- Only `publish` gets `id-token: write`, for the OIDC token of npm trusted
-  publishing; it runs in the `npm` environment. No npm token is stored in
-  the repository.
+- `verify` gets `packages: read`, to query the registry.
+- Only `publish` gets `packages: write`; it runs in the `github-packages`
+  environment and authenticates with the workflow token. No registry
+  token is stored in the repository.
 - Only `tag` gets `contents: write`, to create the tag through the Git
   references API. It runs after `publish` and only when not a dry run.
 
@@ -135,29 +133,36 @@ does not rebuild.
    to its `CHANGELOG.md` (and the README if the supported format versions
    change). Merge it into `main`.
 2. Actions → « Release TypeScript package » → « Run workflow » on `main`,
-   choose the package, keep **dry-run** ticked. Approve the `npm`
-   environment when asked. The publish step runs `npm publish --dry-run`
-   and prints the tarball contents, name, version and tag; no tag is
-   created.
+   choose the package, keep **dry-run** ticked. Approve the
+   `github-packages` environment when asked. The publish step runs
+   `npm publish --dry-run` and prints the tarball contents, name, version
+   and tag; no tag is created.
 3. Run it again with **dry-run** unticked and approve. The workflow
-   publishes with `npm publish ./release/<tarball> --access public
-   --provenance` (npm 11.21.1, Node.js 24), then creates the tag.
-4. Check the package page on npmjs.com: version, files and the provenance
-   badge linking to the workflow run.
+   publishes with `npm publish ./release/<tarball> --registry
+   https://npm.pkg.github.com` (npm 11.21.1, Node.js 24), then creates the
+   tag. It passes no `--provenance`: GitHub Packages does not document
+   npm provenance.
+4. Check the package page on GitHub: version, linked repository and
+   visibility (see prerequisite 3), then, with a token that has
+   `read:packages`:
+
+   ```sh
+   npm view @open-ocpp-trace/<package>@<version> dependencies --registry=https://npm.pkg.github.com
+   ```
+
+   For `jsonl`, it must show the exact `core` version.
 
 A real publish is refused from any branch other than `main`. If `publish`
 succeeds and `tag` fails, use « Re-run failed jobs » on that run, not
-« Re-run all jobs »: the version is then on npm and a new `verify` would
-refuse it.
+« Re-run all jobs »: the version is then published and a new `verify`
+would refuse it.
 
 ## Dry run
 
 A dry run (the default) runs the whole `verify` job and
 `npm publish --dry-run` on the verified tarball, then stops: nothing is
-sent to the registry and no tag is created. It still needs the `npm`
-environment approval. Whether npm requests an OIDC token during a dry run
-is not documented; if a dry run fails on authentication before the
-trusted publisher exists, the `verify` job alone still proves the package.
+sent to the registry and no tag is created. It still needs the
+`github-packages` environment approval.
 
 To check the tarballs locally instead, from `typescript/`:
 
@@ -165,5 +170,5 @@ To check the tarballs locally instead, from `typescript/`:
 vp run -r pack
 sh scripts/pack-release.sh /tmp/open-ocpp-trace-release core jsonl
 sh scripts/verify-packages.sh /tmp/open-ocpp-trace-release/*.tgz
-npm publish /tmp/open-ocpp-trace-release/open-ocpp-trace-core-<version>.tgz --access public --dry-run
+npm publish /tmp/open-ocpp-trace-release/open-ocpp-trace-core-<version>.tgz --registry https://npm.pkg.github.com --dry-run
 ```

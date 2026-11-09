@@ -1,12 +1,13 @@
 name: Release TypeScript package
 
-# Publishes one package of the TypeScript workspace to npm. Started by
-# hand only; see typescript/RELEASING.md. A run publishes nothing unless
-# `dry-run` is unticked, and the `publish` job waits for the reviewers of
-# the `npm` environment either way. That approval gate exists only once
-# the `npm` environment is configured with required reviewers and the
-# `main` deployment branch (RELEASING.md, prerequisite 2): GitHub creates
-# a missing environment unprotected on the first run that names it.
+# Publishes one package of the TypeScript workspace to the npm registry
+# of GitHub Packages (https://npm.pkg.github.com). Started by hand only;
+# see typescript/RELEASING.md. A run publishes nothing unless `dry-run` is
+# unticked, and the `publish` job waits for the reviewers of the
+# `github-packages` environment either way. That approval gate exists only
+# once the environment is configured with required reviewers and the
+# `main` deployment branch (RELEASING.md, prerequisites): GitHub creates a
+# missing environment unprotected on the first run that names it.
 on:
   workflow_dispatch:
     inputs:
@@ -26,6 +27,10 @@ on:
 permissions:
   contents: read
 
+env:
+  REGISTRY_URL: https://npm.pkg.github.com
+  SCOPE: '@open-ocpp-trace'
+
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.package }}
   cancel-in-progress: false
@@ -34,6 +39,10 @@ jobs:
   verify:
     name: Build and verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Reading the registry to check what is already published.
+      packages: read
     outputs:
       tarball: ${{ steps.pack.outputs.tarball }}
       name: ${{ steps.pack.outputs.name }}
@@ -88,6 +97,16 @@ jobs:
             echo "tag=$name@$version"
           } >> "$GITHUB_OUTPUT"
           echo "packed $name@$version as $path"
+      # After the smoke test, whose clean consumer must not see this
+      # configuration. npm expands ${NODE_AUTH_TOKEN} when it reads the file.
+      - name: Point the scope at GitHub Packages
+        run: |
+          npmrc="$RUNNER_TEMP/github-packages.npmrc"
+          {
+            echo "$SCOPE:registry=$REGISTRY_URL"
+            echo "//${REGISTRY_URL#https://}/:_authToken=\${NODE_AUTH_TOKEN}"
+          } > "$npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$npmrc" >> "$GITHUB_ENV"
       - name: Check that this version is not released yet
         env:
           NAME: ${{ steps.pack.outputs.name }}
@@ -95,6 +114,7 @@ jobs:
           TAG: ${{ steps.pack.outputs.tag }}
           DRY_RUN: ${{ inputs.dry-run }}
           REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           status=0
           if [ "$DRY_RUN" != true ] && [ "$VERSION" = 0.0.0 ]; then
@@ -117,27 +137,29 @@ jobs:
               ;;
           esac
           # npm fails with E404 for an unknown package or version; any
-          # other failure (network, registry) leaves the answer unknown.
+          # other failure (network, registry, authentication) leaves the
+          # answer unknown.
           errors="$RUNNER_TEMP/npm-view.err"
           rc=0
           published="$(npm view "$NAME@$VERSION" version 2>"$errors")" || rc=$?
           if [ "$rc" -ne 0 ]; then
             cat "$errors" >&2
             if ! grep -q 'code E404' "$errors"; then
-              echo "::error::cannot query npm for $NAME@$VERSION (npm exited with $rc)"
+              echo "::error::cannot query $REGISTRY_URL for $NAME@$VERSION (npm exited with $rc)"
               exit 1
             fi
             published=
           fi
           if [ -n "$published" ]; then
-            echo "::error::$NAME@$VERSION is already on npm"
+            echo "::error::$NAME@$VERSION is already on $REGISTRY_URL"
             status=1
           fi
           exit "$status"
-      - name: Check that workspace dependencies are on npm
+      - name: Check that workspace dependencies are published
         if: ${{ !inputs.dry-run }}
         env:
           TARBALL: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           # Assigned first so that a failing tar or node fails the step
@@ -150,7 +172,7 @@ jobs:
           status=0
           for spec in $specs; do
             if [ -z "$(npm view "$spec" version 2>/dev/null || true)" ]; then
-              echo "::error::$spec is not on npm; release it first"
+              echo "::error::$spec is not on $REGISTRY_URL; release it first"
               status=1
             fi
           done
@@ -163,16 +185,15 @@ jobs:
           retention-days: 7
 
   publish:
-    name: Publish to npm${{ inputs.dry-run && ' (dry run)' || '' }}
+    name: Publish to GitHub Packages${{ inputs.dry-run && ' (dry run)' || '' }}
     needs: verify
     runs-on: ubuntu-latest
     # Required reviewers and the `main` branch rule are set on the
-    # environment; the npm trusted publisher names it too.
-    environment: npm
+    # environment.
+    environment: github-packages
     permissions:
       contents: read
-      # OIDC token for npm trusted publishing and provenance.
-      id-token: write
+      packages: write
     steps:
       - name: Refuse a real publish from another ref than main
         env:
@@ -190,7 +211,11 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-      # Trusted publishing needs npm 11.5.1 or later.
+          # Writes an .npmrc that maps the scope to the registry and reads
+          # the token from NODE_AUTH_TOKEN.
+          registry-url: ${{ env.REGISTRY_URL }}
+          scope: ${{ env.SCOPE }}
+      # A pinned npm, the same for every release.
       - name: Install npm
         run: |
           npm install --global npm@11.21.1
@@ -199,8 +224,12 @@ jobs:
         env:
           TARBALL: ${{ needs.verify.outputs.tarball }}
           DRY_RUN: ${{ inputs.dry-run }}
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        # No --provenance: npm provenance is not documented for GitHub
+        # Packages. Visibility is set in the package settings, not by
+        # --access.
         run: |
-          set -- --access public --provenance
+          set -- --registry "$REGISTRY_URL"
           if [ "$DRY_RUN" = true ]; then
             set -- "$@" --dry-run
           fi
