@@ -35,9 +35,20 @@ never from memory.
 
 ## Testing
 
-No test runner yet. For `conformance/fetch.sh`: `shellcheck`, run under
-`dash`, and probe each failure (tampered or missing cache file, unknown or
-short SHA, `--update main`) for a non-zero exit.
+TypeScript: run the commands of `typescript/README.md` § Commands from
+`typescript/` (frozen `bun install`, `vp check`, `vp test`,
+`vp run -r pack`, then `vp run smoke`, the clean-consumer smoke test of the
+packed packages), after `conformance/fetch.sh`. CI runs the same list in
+`.github/workflows/typescript.yml`; its `ci-result` job is the only
+required check, so new jobs go into its `needs`. Lint the workflow with
+`actionlint`.
+
+For `typescript/scripts/smoke-consumer.sh`: `shellcheck`, run under `dash`,
+and probe a broken export path for a non-zero exit.
+
+For `conformance/fetch.sh`: `shellcheck`, run under `dash`, and probe each
+failure (tampered or missing cache file, unknown or short SHA,
+`--update main`) for a non-zero exit.
 
 ## Gotchas
 

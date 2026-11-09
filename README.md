@@ -52,7 +52,7 @@ Out of scope, left to the applications that use the SDK:
 
 | Language | Directory | Packages | Status |
 | --- | --- | --- | --- |
-| TypeScript | `typescript/` | `@open-ocpp-trace/core`, `@open-ocpp-trace/jsonl` | planned ([#5](https://github.com/open-ocpp-trace/sdk/issues/5)) |
+| TypeScript | [`typescript/`](typescript/README.md) | `@open-ocpp-trace/core`, `@open-ocpp-trace/jsonl` | in development |
 
 Each implementation is self-contained: it owns its toolchain, dependencies,
 CI and releases. The repository root imposes no language toolchain, so working
@@ -70,12 +70,18 @@ Two version numbers are involved, and they are independent:
   only when the specification changes.
 
 Each package documents which format versions it reads and writes. See
-[docs/architecture.md](docs/architecture.md#versioning).
+[docs/architecture.md](docs/architecture.md#versioning) for the policy and
+[docs/compatibility.md](docs/compatibility.md) for the supported format
+versions and runtimes, with the tests that prove them.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md): layout, package boundaries,
   dependency direction and contribution principles.
+- [Compatibility](docs/compatibility.md): supported format versions and
+  runtimes, and the evidence for each.
+- [Contributing](CONTRIBUTING.md): prerequisites, checks, review rules,
+  DCO and where format changes belong.
 
 ## License
 

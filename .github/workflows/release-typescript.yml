@@ -1,0 +1,224 @@
+name: Release TypeScript package
+
+# Publishes one package of the TypeScript workspace to npm. Started by
+# hand only; see typescript/RELEASING.md. A run publishes nothing unless
+# `dry-run` is unticked, and the `publish` job waits for the reviewers of
+# the `npm` environment either way. That approval gate exists only once
+# the `npm` environment is configured with required reviewers and the
+# `main` deployment branch (RELEASING.md, prerequisite 2): GitHub creates
+# a missing environment unprotected on the first run that names it.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release (directory under typescript/packages)
+        type: choice
+        required: true
+        options:
+          - core
+          - jsonl
+      dry-run:
+        description: Run `npm publish --dry-run` and create no tag
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.package }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    outputs:
+      tarball: ${{ steps.pack.outputs.tarball }}
+      name: ${{ steps.pack.outputs.name }}
+      version: ${{ steps.pack.outputs.version }}
+      tag: ${{ steps.pack.outputs.tag }}
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch the conformance corpus
+        working-directory: .
+        run: conformance/fetch.sh
+      # Bun comes from `packageManager` in typescript/package.json.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: typescript/package.json
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          working-directory: typescript
+          # The lowest Node.js line the workspace supports.
+          node-version: '22'
+          package-manager: |
+            bun: false
+          run-install: false
+          # No cache in a release: an entry saved by another run, from any
+          # branch, could inject code into the published package.
+          cache: false
+      - run: bun install --frozen-lockfile
+      - run: vp check
+      - run: vp test
+      # Builds every package, packs and verifies core and jsonl, installs
+      # them into a clean consumer and imports them under Node.js and Bun.
+      - name: Smoke test
+        run: sh scripts/smoke-consumer.sh
+      - name: Pack and verify the release tarball
+        id: pack
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          set -o pipefail
+          path="$(sh scripts/pack-release.sh "$RUNNER_TEMP/release" "$PACKAGE")"
+          sh scripts/verify-packages.sh "$path"
+          name="$(tar -xzOf "$path" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).name')"
+          version="$(tar -xzOf "$path" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')"
+          {
+            echo "tarball=$(basename -- "$path")"
+            echo "name=$name"
+            echo "version=$version"
+            echo "tag=$name@$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "packed $name@$version as $path"
+      - name: Check that this version is not released yet
+        env:
+          NAME: ${{ steps.pack.outputs.name }}
+          VERSION: ${{ steps.pack.outputs.version }}
+          TAG: ${{ steps.pack.outputs.tag }}
+          DRY_RUN: ${{ inputs.dry-run }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          status=0
+          if [ "$DRY_RUN" != true ] && [ "$VERSION" = 0.0.0 ]; then
+            echo "::error::$NAME is still at 0.0.0; set the release version first"
+            status=1
+          fi
+          # With --exit-code, git exits 2 when no ref matches; any other
+          # failure leaves the answer unknown, so the job stops.
+          rc=0
+          git ls-remote --exit-code --tags "$REPOSITORY_URL" "refs/tags/$TAG" >/dev/null || rc=$?
+          case "$rc" in
+            0)
+              echo "::error::tag $TAG already exists"
+              status=1
+              ;;
+            2) ;;
+            *)
+              echo "::error::cannot list the tags of $REPOSITORY_URL (git exited with $rc)"
+              exit 1
+              ;;
+          esac
+          # npm fails with E404 for an unknown package or version; any
+          # other failure (network, registry) leaves the answer unknown.
+          errors="$RUNNER_TEMP/npm-view.err"
+          rc=0
+          published="$(npm view "$NAME@$VERSION" version 2>"$errors")" || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            cat "$errors" >&2
+            if ! grep -q 'code E404' "$errors"; then
+              echo "::error::cannot query npm for $NAME@$VERSION (npm exited with $rc)"
+              exit 1
+            fi
+            published=
+          fi
+          if [ -n "$published" ]; then
+            echo "::error::$NAME@$VERSION is already on npm"
+            status=1
+          fi
+          exit "$status"
+      - name: Check that workspace dependencies are on npm
+        if: ${{ !inputs.dry-run }}
+        env:
+          TARBALL: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
+        run: |
+          set -o pipefail
+          # Assigned first so that a failing tar or node fails the step
+          # instead of yielding an empty list.
+          specs="$(tar -xzOf "$TARBALL" package/package.json | node -e '
+            const deps = JSON.parse(require("fs").readFileSync(0, "utf8")).dependencies ?? {};
+            for (const [name, version] of Object.entries(deps))
+              if (name.startsWith("@open-ocpp-trace/")) console.log(name + "@" + version);
+          ')"
+          status=0
+          for spec in $specs; do
+            if [ -z "$(npm view "$spec" version 2>/dev/null || true)" ]; then
+              echo "::error::$spec is not on npm; release it first"
+              status=1
+            fi
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tarball
+          path: ${{ runner.temp }}/release/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm${{ inputs.dry-run && ' (dry run)' || '' }}
+    needs: verify
+    runs-on: ubuntu-latest
+    # Required reviewers and the `main` branch rule are set on the
+    # environment; the npm trusted publisher names it too.
+    environment: npm
+    permissions:
+      contents: read
+      # OIDC token for npm trusted publishing and provenance.
+      id-token: write
+    steps:
+      - name: Refuse a real publish from another ref than main
+        env:
+          DRY_RUN: ${{ inputs.dry-run }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$DRY_RUN" != true ] && [ "$REF" != refs/heads/main ]; then
+            echo "::error::a release is published from main only, not $REF"
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-tarball
+          path: release
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Install npm
+        run: |
+          npm install --global npm@11.21.1
+          echo "node $(node --version), npm $(npm --version)"
+      - name: Publish ${{ needs.verify.outputs.tag }}
+        env:
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -- --access public --provenance
+          if [ "$DRY_RUN" = true ]; then
+            set -- "$@" --dry-run
+          fi
+          npm publish "./release/$TARBALL" "$@"
+
+  tag:
+    name: Tag the release
+    needs: [verify, publish]
+    if: ${{ !inputs.dry-run }}
+    runs-on: ubuntu-latest
+    permissions:
+      # Creating a tag through the Git references API.
+      contents: write
+    steps:
+      - name: Create ${{ needs.verify.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" -f "sha=$GITHUB_SHA"

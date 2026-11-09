@@ -8,16 +8,16 @@ independent of each other and of the specification.
 
 ```text
 sdk/
-├── .github/            CI workflows, path-scoped per implementation   (planned, #3)
+├── .github/            CI workflows, issue and pull request templates  (present)
 ├── conformance/        Pinned specification corpus and how to run it   (present)
 ├── docs/               Cross-language documentation                    (present)
 ├── examples/           Runnable usage examples                         (planned)
-├── typescript/         TypeScript implementation, Bun + Vite+          (planned, #5)
+├── typescript/         TypeScript implementation, Bun + Vite+          (present)
 │   └── packages/
 │       ├── core/       @open-ocpp-trace/core
 │       └── jsonl/      @open-ocpp-trace/jsonl
 ├── README.md
-├── CONTRIBUTING.md                                                     (planned, #4)
+├── CONTRIBUTING.md                                                     (present)
 └── LICENSE
 ```
 
@@ -167,7 +167,7 @@ The SDK version and the format version are distinct and evolve independently.
   release does not imply a release of another language.
 - Each package declares the format versions it reads and writes. The
   compatibility matrix and the policy for unsupported versions are documented
-  in `docs/compatibility.md` (#4).
+  in [docs/compatibility.md](compatibility.md).
 
 ## Contribution principles for language isolation
 
@@ -179,14 +179,15 @@ The SDK version and the format version are distinct and evolve independently.
   implementation's tools.
 - **CI is path-scoped.** A change under `typescript/` runs the TypeScript
   checks; a documentation-only change does not run every language's build
-  (#3).
+  ([`.github/workflows/typescript.yml`](../.github/workflows/typescript.yml)).
 - **Shared assets are language-neutral.** `conformance/` and `docs/` contain
   data and prose, never code that requires one language's runtime to use them.
   `conformance/fetch.sh` needs only a POSIX shell and `git`.
 - **Published packages are runtime-neutral.** Development tools, such as Bun,
   are not dependencies of the published packages.
 - **Format changes start upstream.** A pull request here that would alter the
-  record schema is redirected to the specification repository.
+  record schema is redirected to the specification repository. See
+  [CONTRIBUTING.md](../CONTRIBUTING.md#where-a-change-belongs).
 
 ### Adding an implementation
 
