@@ -158,7 +158,8 @@ jobs:
           [ "$actual" = "$expected" ]
           [ "$(node -p 'process.versions.node.split(".")[0]')" = 22 ]
       - run: bun install --frozen-lockfile
-      # Packs core and jsonl, installs the tarballs with npm into a project
+      # Packs core and jsonl as published, checks the tarballs (contents,
+      # publint, attw), installs them with npm into a project
       # outside the workspace, imports them under Node.js and Bun and
       # type-checks a TypeScript consumer. This is `vp run smoke`, called
       # directly so that the consumer runs on the `node` checked above

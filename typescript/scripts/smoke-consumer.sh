@@ -1,9 +1,10 @@
 #!/bin/sh
 # Clean-consumer smoke test of the packed packages.
 #
-# Builds every package, packs core and jsonl with `bun pm pack` (which
-# rewrites `workspace:*` to a version), installs both tarballs with npm
-# into a throwaway project outside the workspace, then:
+# Builds every package, packs core and jsonl with scripts/pack-release.sh
+# (the tarballs the release workflow publishes), checks them with
+# scripts/verify-packages.sh (contents, publint, attw), installs both
+# tarballs with npm into a throwaway project outside the workspace, then:
 #   1. runs smoke-consumer/smoke.mjs under Node.js and under Bun: it
 #      imports every public entry point and writes and reads one record;
 #   2. type-checks smoke-consumer/consumer.ts with `tsc --noEmit`, once
@@ -38,11 +39,11 @@ step() {
 step "build every package"
 (cd "$workspace" && vp run -r pack)
 
-step "pack core and jsonl"
-mkdir "$tmp/tarballs"
-for package in core jsonl; do
-  (cd "$workspace/packages/$package" && bun pm pack --destination "$tmp/tarballs" --quiet)
-done
+step "pack core and jsonl as published"
+sh "$workspace/scripts/pack-release.sh" "$tmp/tarballs" core jsonl
+
+step "verify the tarballs"
+sh "$workspace/scripts/verify-packages.sh" "$tmp"/tarballs/*.tgz
 
 step "install the tarballs into a project outside the workspace"
 consumer="$tmp/consumer"

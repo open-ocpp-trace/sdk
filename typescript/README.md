@@ -40,7 +40,8 @@ re-runs the tests on change.
 
 `vp run smoke` runs [`scripts/smoke-consumer.sh`](scripts/smoke-consumer.sh)
 (`sh scripts/smoke-consumer.sh` is the same). It builds every package,
-packs `core` and `jsonl` with `bun pm pack`, installs both tarballs with
+packs `core` and `jsonl` as they are published, checks the tarballs (see
+[Packed packages](#packed-packages)), installs both tarballs with
 npm into a throwaway project outside the workspace, then imports every
 public entry point and writes and reads one record back under Node.js and
 under Bun, and type-checks a TypeScript consumer with `tsc --noEmit` under
@@ -56,6 +57,30 @@ commands above, on Node.js 22 and 24 with the Bun version of
 request touches `typescript/`, `conformance/` or the workflow, and on every
 push to `main`.
 
+### Packed packages
+
+The tarballs installed by the smoke test are the ones a release publishes.
+After `vp run -r pack`:
+
+```sh
+sh scripts/pack-release.sh <dir> [core] [jsonl]   # write the published tarballs to <dir>
+sh scripts/verify-packages.sh <dir>/*.tgz         # check them
+```
+
+[`scripts/pack-release.sh`](scripts/pack-release.sh) packs each package
+with `bun pm pack`, which replaces `workspace:*` with the real version,
+then removes the development-only `@open-ocpp-trace/source` export
+condition from the packed `package.json`, adds the repository `LICENSE` and
+repacks with `npm pack`. The committed `package.json` keeps the condition.
+
+[`scripts/verify-packages.sh`](scripts/verify-packages.sh) fails when a
+tarball contains anything but `package.json`, `README.md`, `LICENSE` and
+`dist/`, when an `exports` target is missing from the tarball, when the
+source condition or a `workspace:` dependency is left, when
+[publint](https://publint.dev/) `--strict` reports a problem, or when
+[Are the Types Wrong?](https://arethetypeswrong.github.io/) (`attw
+--profile esm-only`) cannot resolve the types of an entry point.
+
 ## Layout
 
 ```text
@@ -64,7 +89,7 @@ typescript/
 ├── bun.lock
 ├── tsconfig.base.json  shared compiler options
 ├── vite.config.ts      lint, format and test configuration
-├── scripts/            smoke-consumer.sh and its consumer project files
+├── scripts/            release packing, package checks, smoke test
 └── packages/
     ├── core/
     │   ├── src/        package sources, runtime-neutral

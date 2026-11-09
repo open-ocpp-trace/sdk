@@ -23,6 +23,6 @@ export default defineConfig({
     ignorePatterns: ["**/dist/**", "**/node_modules/**", "bun.lock"],
   },
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "scripts/*.test.ts"],
   },
 });
