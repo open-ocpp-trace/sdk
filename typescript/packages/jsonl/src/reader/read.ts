@@ -34,8 +34,9 @@ export interface ReadRecordsOptions {
  * skipped but counted. A source mixing strings and bytes, or yielding
  * anything else, makes the iteration throw a `TypeError` in both modes.
  *
- * Options are checked when called: an invalid `maxLineBytes` or `onError`
- * throws a `RangeError` before any chunk is read.
+ * Arguments are checked when called, before any chunk is read: a plain
+ * string source throws a `TypeError` (pass `[text]`), an invalid
+ * `maxLineBytes` or `onError` a `RangeError`.
  */
 export function readRecords(
   source: ChunkSource,
@@ -53,6 +54,11 @@ export function readRecords(
   source: ChunkSource,
   options: ReadRecordsOptions = {},
 ): AsyncIterable<TraceRecord | ReadResult> {
+  if (typeof source === "string") {
+    // A string is an Iterable<string> of code points: reading it would
+    // work, one code point per chunk.
+    throw new TypeError("readRecords takes a sequence of chunks; pass a whole text as [text]");
+  }
   const onError = options.onError ?? "throw";
   if (onError !== "throw" && onError !== "yield") {
     throw new RangeError(`onError must be "throw" or "yield", got ${String(onError)}`);

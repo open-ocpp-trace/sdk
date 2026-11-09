@@ -40,7 +40,9 @@ function createDecoder(): Utf8Decoder {
 
 const LF = 0x0a;
 const CR = 0x0d;
-const BOM_BYTES = [0xef, 0xbb, 0xbf] as const;
+// Never mutated: prefixes of it are replayed as `subarray` views, which the
+// decoder only reads.
+const BOM_BYTES = Uint8Array.of(0xef, 0xbb, 0xbf);
 const BOM_CHAR = 0xfeff;
 const BLANK = /^[ \t\r]*$/;
 
@@ -116,6 +118,7 @@ export class LineSplitter {
     } else if (chunk instanceof Uint8Array) {
       if (chunk.length === 0) return;
       this.#setMode("bytes");
+      this.#decoder ??= createDecoder();
       if (this.#atStart) yield* this.#pushBytesAtStart(chunk);
       else yield* this.#pushBytes(chunk);
     } else {
@@ -128,12 +131,12 @@ export class LineSplitter {
     if (this.#atStart && this.#bomMatched > 0) {
       // A BOM prefix cut by the end of the stream is content.
       this.#atStart = false;
-      yield* this.#pushBytes(Uint8Array.from(BOM_BYTES.slice(0, this.#bomMatched)));
+      yield* this.#pushBytes(BOM_BYTES.subarray(0, this.#bomMatched));
     }
     if (this.#discarding) return;
     // Without a LF, a trailing CR is a lone CR and counts as content.
     if (this.#bytes > this.#maxLineBytes) {
-      yield this.#fail("line-too-long", `line exceeds maxLineBytes (${this.#maxLineBytes})`);
+      yield this.#tooLong();
       return;
     }
     const event = this.#completeLine(false);
@@ -153,7 +156,7 @@ export class LineSplitter {
       if (chunk[index] !== BOM_BYTES[this.#bomMatched]) {
         // Not a BOM: replay the prefix matched so far as content.
         this.#atStart = false;
-        const prefix = Uint8Array.from(BOM_BYTES.slice(0, this.#bomMatched));
+        const prefix = BOM_BYTES.subarray(0, this.#bomMatched);
         this.#bomMatched = 0;
         yield* this.#pushBytes(prefix);
         yield* this.#pushBytes(chunk.subarray(index));
@@ -177,7 +180,7 @@ export class LineSplitter {
         const size = this.#bytes + utf8Length(text, start, end);
         const endsWithCR = text.charCodeAt(end - 1) === CR;
         if (this.#exceeds(size, endsWithCR)) {
-          yield this.#fail("line-too-long", `line exceeds maxLineBytes (${this.#maxLineBytes})`);
+          yield this.#tooLong();
         } else {
           this.#parts.push(text.slice(start, end));
           this.#bytes = size;
@@ -200,11 +203,13 @@ export class LineSplitter {
         const size = this.#bytes + (end - start);
         const endsWithCR = chunk[end - 1] === CR;
         if (this.#exceeds(size, endsWithCR)) {
-          yield this.#fail("line-too-long", `line exceeds maxLineBytes (${this.#maxLineBytes})`);
+          yield this.#tooLong();
         } else {
+          // Outside the `try`: a missing TextDecoder is a TypeError, not
+          // an `encoding` error of this line.
+          this.#decoder ??= createDecoder();
           let text: string | undefined;
           try {
-            this.#decoder ??= createDecoder();
             text = this.#decoder.decode(chunk.subarray(start, end), { stream: true });
           } catch (cause) {
             yield this.#fail("encoding", "invalid UTF-8", cause);
@@ -251,6 +256,11 @@ export class LineSplitter {
     if (atLf && this.#endsWithCR) text = text.slice(0, -1);
     this.#reset();
     return BLANK.test(text) ? undefined : { type: "line", line, text };
+  }
+
+  /** Reports the current line as over `maxLineBytes`; see {@link #fail}. */
+  #tooLong(): LineEvent {
+    return this.#fail("line-too-long", `line exceeds maxLineBytes (${this.#maxLineBytes})`);
   }
 
   /** Reports the current line as unreadable and discards it up to the next LF. */

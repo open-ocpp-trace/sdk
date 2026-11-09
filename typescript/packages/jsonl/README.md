@@ -134,6 +134,8 @@ for await (const record of readRecords(chunks(response.body))) {
 ```
 
 A whole file already in memory is a one-chunk source: `readRecords([text])`.
+A plain string is rejected with a `TypeError` when `readRecords` is called,
+since it would otherwise be read one code point per chunk.
 
 ### Framing rules
 
@@ -147,7 +149,9 @@ A whole file already in memory is a one-chunk source: `readRecords([text])`.
   stream only; one at the start of a later line is content, so that line is a `json` error.
 - **Encoding.** Byte chunks are decoded as UTF-8; a multibyte character may
   span chunks. Invalid UTF-8 is an `encoding` error for the line holding it.
-  Byte chunks need a global `TextDecoder`, present in every supported runtime.
+  Byte chunks need a global `TextDecoder`, present in every supported runtime;
+  without one, the first byte chunk makes the iteration throw a `TypeError`
+  in both modes.
 - **Line size.** A line longer than `maxLineBytes` UTF-8 bytes, excluding
   its LF or CRLF terminator and a stream-initial BOM, is a `line-too-long`
   error, raised as soon as the bound is crossed; the rest of the line is

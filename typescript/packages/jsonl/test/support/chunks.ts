@@ -1,12 +1,18 @@
 // Test helpers for building chunked inputs. The workspace compiles without
-// DOM or Node types, so `TextEncoder` is reached through `globalThis` with a
-// minimal local type, as the reader does for `TextDecoder`.
+// DOM or Node types, so `TextEncoder` and `TextDecoder` are reached through
+// `globalThis` with minimal local types, as the reader does for `TextDecoder`.
 
 interface Utf8Encoder {
   encode(input: string): Uint8Array;
 }
+interface Utf8Decoder {
+  decode(input: Uint8Array): string;
+}
 
-const { TextEncoder } = globalThis as unknown as { TextEncoder: new () => Utf8Encoder };
+const { TextEncoder, TextDecoder } = globalThis as unknown as {
+  TextEncoder: new () => Utf8Encoder;
+  TextDecoder: new () => Utf8Decoder;
+};
 const encoder = new TextEncoder();
 
 // Invisible characters, spelled by code point so that they stay visible in
@@ -21,6 +27,11 @@ export const LS: string = String.fromCharCode(0x2028);
 /** UTF-8 bytes of `text`. */
 export function utf8(text: string): Uint8Array {
   return encoder.encode(text);
+}
+
+/** Text of the UTF-8 `bytes`, decoded by a default `TextDecoder`. */
+export function decodeUtf8(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes);
 }
 
 /** Concatenates byte arrays. */
@@ -41,6 +52,13 @@ export function chunksOf<T extends string | Uint8Array>(input: T, size: number):
     chunks.push(input.slice(offset, offset + size) as T);
   }
   return chunks;
+}
+
+/** Drains `iterable` into an array. */
+export async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
+  const items: T[] = [];
+  for await (const item of iterable) items.push(item);
+  return items;
 }
 
 /** Deterministic PRNG (mulberry32) so that random chunkings are reproducible. */

@@ -1,9 +1,17 @@
-import { describe, expect, expectTypeOf, it } from "vite-plus/test";
+import { afterEach, describe, expect, expectTypeOf, it } from "vite-plus/test";
 
 import type { TraceRecord } from "@open-ocpp-trace/core";
 
 import { JsonlReadError, readRecords, type ReadResult } from "../../src/reader/index.ts";
-import { BOM, chunksOf, concat, randomChunks, seededRandom, utf8 } from "../support/chunks.ts";
+import {
+  BOM,
+  chunksOf,
+  collect,
+  concat,
+  randomChunks,
+  seededRandom,
+  utf8,
+} from "../support/chunks.ts";
 
 const call = (id: string) => ({
   schemaVersion: "1.1",
@@ -29,12 +37,6 @@ const result = (id: string) => ({
 
 const RECORDS = [call("1"), result("1"), call("2"), result("2")];
 const STREAM = `${BOM}${RECORDS.map((r) => JSON.stringify(r)).join("\r\n")}`;
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
-}
 
 async function* asAsync<T>(items: Iterable<T>): AsyncGenerator<T> {
   for (const item of items) yield item;
@@ -97,6 +99,82 @@ describe("readRecords in throw mode (default)", () => {
     expect(() => readRecords([], { maxLineBytes: 0 })).toThrow(RangeError);
     expect(() => readRecords([], { onError: "skip" as "yield" })).toThrow(RangeError);
   });
+
+  it("rejects a plain string source when called, pointing to [text]", () => {
+    const text = `${JSON.stringify(call("1"))}\n`;
+    expect(() => readRecords(text)).toThrow(TypeError);
+    expect(() => readRecords(text, { onError: "yield" })).toThrow("[text]");
+  });
+});
+
+describe("readRecords without a global TextDecoder", () => {
+  const scope = globalThis as { TextDecoder?: unknown };
+  const original = scope.TextDecoder;
+  afterEach(() => {
+    scope.TextDecoder = original;
+  });
+
+  it.each(["throw", "yield"] as const)(
+    "throws a TypeError for byte chunks in %s mode",
+    async (onError) => {
+      const input = [utf8(`${JSON.stringify(call("1"))}\n`), utf8(`${JSON.stringify(call("2"))}`)];
+      delete scope.TextDecoder;
+      await expect(collect(readRecords(input, { onError }))).rejects.toThrow(
+        new TypeError("Reading Uint8Array chunks requires a global TextDecoder"),
+      );
+    },
+  );
+
+  it("still reads string chunks", async () => {
+    delete scope.TextDecoder;
+    await expect(collect(readRecords([`${JSON.stringify(call("1"))}\n`]))).resolves.toEqual([
+      call("1"),
+    ]);
+  });
+});
+
+describe("readRecords closes its source", () => {
+  const LINES = [call("1"), call("2"), call("3")].map((r) => `${JSON.stringify(r)}\n`);
+
+  function tracked(kind: "sync" | "async", lines: readonly string[]) {
+    const state = { closed: false };
+    function* sync(): Generator<string> {
+      try {
+        yield* lines;
+      } finally {
+        state.closed = true;
+      }
+    }
+    async function* async(): AsyncGenerator<string> {
+      try {
+        yield* lines;
+      } finally {
+        state.closed = true;
+      }
+    }
+    return { state, source: kind === "sync" ? sync() : async() };
+  }
+
+  it.each(["sync", "async"] as const)(
+    "calls return() on a %s source when the consumer breaks",
+    async (kind) => {
+      const { state, source } = tracked(kind, LINES);
+      for await (const record of readRecords(source)) {
+        expect(record).toEqual(call("1"));
+        break;
+      }
+      expect(state.closed).toBe(true);
+    },
+  );
+
+  it.each(["sync", "async"] as const)(
+    "calls return() on a %s source when throw mode throws",
+    async (kind) => {
+      const { state, source } = tracked(kind, [LINES[0] ?? "", "{oops}\n", ...LINES.slice(1)]);
+      await expect(collect(readRecords(source))).rejects.toThrow(JsonlReadError);
+      expect(state.closed).toBe(true);
+    },
+  );
 });
 
 describe("readRecords in yield mode", () => {

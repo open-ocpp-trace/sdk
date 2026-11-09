@@ -1,32 +1,13 @@
 // Reads every conformance fixture through `readRecords`, whatever the
 // chunking, and checks that the records are exactly the JSON of each line.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vite-plus/test";
 
-import { fixtureTraces, SPECIFICATION_DIR } from "../../../core/test/support/corpus.ts";
+import { fixtureTraces, readCorpusBytes } from "../../../core/test/support/corpus.ts";
 import { readRecords } from "../../src/reader/index.ts";
-import { chunksOf, randomChunks, seededRandom } from "../support/chunks.ts";
+import { chunksOf, collect, decodeUtf8, randomChunks, seededRandom } from "../support/chunks.ts";
 
 const traces = fixtureTraces();
-
-interface Utf8Decoder {
-  decode(input: Uint8Array): string;
-}
-const { TextDecoder } = globalThis as unknown as { TextDecoder: new () => Utf8Decoder };
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
-}
-
-/** The fixture file as bytes, read directly so that nothing is normalised. */
-function bytesOf(path: string): Uint8Array {
-  return new Uint8Array(readFileSync(join(SPECIFICATION_DIR, path)));
-}
 
 /** `bytes` minus one trailing LF, failing if there is none to remove. */
 function withoutFinalNewline(bytes: Uint8Array): Uint8Array {
@@ -40,8 +21,8 @@ describe("conformance corpus through readRecords", () => {
   });
 
   describe.each(traces.map((trace) => [trace.name, trace] as const))("%s", (_, trace) => {
-    const bytes = bytesOf(trace.path);
-    const text = new TextDecoder().decode(bytes);
+    const bytes = readCorpusBytes(trace.path);
+    const text = decodeUtf8(bytes);
     const expected: unknown[] = trace.lines.map((line) => JSON.parse(line.text) as unknown);
 
     const chunkings: ReadonlyArray<readonly [string, ReadonlyArray<string | Uint8Array>]> = [
