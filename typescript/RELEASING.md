@@ -43,18 +43,19 @@ and the workflow refuses to release a tagged version again.
 
 ## Changelog
 
-Each package has a `CHANGELOG.md` in
-[Common Changelog](https://common-changelog.org/) style:
+Each package has a `CHANGELOG.md` following
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/):
 
-- no `Unreleased` section; the entry is written in the release pull
-  request, before the tag exists;
-- one `## [x.y.z] - YYYY-MM-DD` heading per release, latest first, with a
-  reference link to the tag;
-- changes grouped under `### Changed`, `### Added`, `### Removed`,
-  `### Fixed`, in that order, breaking changes first and marked
-  **Breaking:**;
-- the first release carries the notice `_Initial release._` instead of
-  groups.
+- an `## [Unreleased]` section at the top, filled in by the pull requests
+  that change what package users see;
+- the release pull request moves those entries under a new
+  `## [x.y.z] - YYYY-MM-DD` heading, latest first, and leaves `Unreleased`
+  empty;
+- changes grouped under `### Added`, `### Changed`, `### Deprecated`,
+  `### Removed`, `### Fixed`, `### Security`, with breaking changes
+  marked **Breaking:** and listed first in their group;
+- reference links at the bottom: `[unreleased]` compares the latest tag
+  with `HEAD`, and each `[x.y.z]` points to its tag.
 
 ## Tags
 
@@ -129,8 +130,8 @@ does not rebuild.
 ## Release a package
 
 1. Open a pull request that sets `version` in
-   `typescript/packages/<package>/package.json` and adds the release entry
-   to its `CHANGELOG.md` (and the README if the supported format versions
+   `typescript/packages/<package>/package.json` and moves the `Unreleased`
+   entries of its `CHANGELOG.md` under the new version heading (and the README if the supported format versions
    change). Merge it into `main`.
 2. Actions → « Release TypeScript package » → « Run workflow » on `main`,
    choose the package, keep **dry-run** ticked. Approve the

@@ -123,7 +123,8 @@ builds.
 
 ## Commits and pull requests
 
-- **Conventional Commits.** For example `feat(jsonl): …`, `fix(core): …`,
+- **[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/).**
+  For example `feat(jsonl): …`, `fix(core): …`,
   `docs: …`, `test: …`, `ci: …`. Mark a breaking change with `!` and a
   `BREAKING CHANGE:` footer.
 - **Sign off every commit** (see [DCO](#developer-certificate-of-origin-dco)).
@@ -133,9 +134,9 @@ builds.
   a runtime claim updates the package README and
   [docs/compatibility.md](docs/compatibility.md) in the same pull request.
 - **Describe user-visible changes.** A change visible to package users says
-  so in the pull request description, in words a package user understands.
-  Do not edit `CHANGELOG.md`: entries are written in the release pull request
-  (see [Release notes](#release-notes)).
+  so in the pull request description, in words a package user understands,
+  and adds an entry under `Unreleased` in the package's `CHANGELOG.md` (see
+  [Release notes](#release-notes)).
 
 ### Review
 
@@ -153,15 +154,14 @@ check them.
 ## Release notes
 
 Each package keeps its own `CHANGELOG.md`, following
-[Common Changelog](https://common-changelog.org/): written for package users,
-grouped by impact (`Changed`, `Added`, `Removed`, `Fixed`), with breaking
-changes stated first and explicitly. Do not paste the commit log.
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/): written for
+package users, grouped by type of change (`Added`, `Changed`, `Deprecated`,
+`Removed`, `Fixed`, `Security`), with breaking changes marked **Breaking:**
+and stated first. Do not paste the commit log.
 
-The changelog has no `Unreleased` section: the maintainer preparing a
-release writes its entry in the release pull request, from the descriptions
-of the pull requests it ships. Breaking changes are marked **Breaking:**, and
-a package's first release reads `_Initial release._` instead of groups. The
-full rules are under
+A pull request that changes what package users see adds its entry under
+`## [Unreleased]`. The release pull request moves those entries under the
+new version heading. The full rules are under
 [Changelog in typescript/RELEASING.md](typescript/RELEASING.md#changelog).
 
 Packages are released per package and per implementation. For TypeScript,
