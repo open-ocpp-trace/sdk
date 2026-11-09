@@ -19,6 +19,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./reader": {
+      "@open-ocpp-trace/source": "./src/reader/index.ts",
+      "types": "./dist/reader.d.ts",
+      "default": "./dist/reader.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
