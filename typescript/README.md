@@ -11,6 +11,10 @@ TypeScript implementation of the
 Package boundaries are described in
 [docs/architecture.md](../docs/architecture.md#package-boundaries).
 
+Each package is versioned and released on its own, with its own
+`CHANGELOG.md`; [RELEASING.md](RELEASING.md) describes the release
+workflow, its prerequisites and the dry run. Nothing is published yet.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh/) 1.4.4, the version pinned by `packageManager` in

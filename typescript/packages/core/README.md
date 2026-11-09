@@ -15,7 +15,10 @@ npm install @open-ocpp-trace/core
 The package is ESM only and has no runtime dependencies. It uses no Node.js,
 Bun or DOM API, so it runs unchanged in browsers, Node.js and Bun.
 
-## Supported format version
+## Supported format versions
+
+Supported format versions: `schemaVersion` **1.x**. The package version
+follows Semantic Versioning independently of the format version.
 
 The package accepts records of format version **1.x** and is built against
 version `"1.1"` of the specification:
@@ -67,7 +70,7 @@ try {
 | `assertRecord(input: unknown)`                               | the record, or throws `TraceValidationError`                                        |
 | `TraceValidationError`                                       | `Error` subclass with `issues: readonly ValidationIssue[]`                          |
 | `isSupportedSchemaVersion(value)`                            | whether `value` is a `"1.<minor>"` string                                           |
-| `SCHEMA_VERSION`, `SUPPORTED_SCHEMA_MAJOR`                   | see [Supported format version](#supported-format-version)                           |
+| `SCHEMA_VERSION`, `SUPPORTED_SCHEMA_MAJOR`                   | see [Supported format versions](#supported-format-versions)                         |
 | `TRANSPORTS`, `DIRECTIONS`, `MESSAGE_TYPES`                  | allowed values, in schema order                                                     |
 | `TraceRecord`                                                | `CallRecord \| CallResultRecord \| CallErrorRecord`, discriminated by `messageType` |
 | `CallRecord`, `CallResultRecord`, `CallErrorRecord`          | the record of each `messageType`: CALL, CALLRESULT, CALLERROR                       |

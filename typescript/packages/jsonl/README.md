@@ -18,6 +18,14 @@ npm install @open-ocpp-trace/jsonl
 The package is ESM only. Its one runtime dependency is
 `@open-ocpp-trace/core`, which defines the `TraceRecord` type.
 
+## Supported format versions
+
+Supported format versions: those of the `@open-ocpp-trace/core` version it
+depends on, `schemaVersion` **1.x** today. The reader, and the writer
+unless called with `validate: false`, check every record with core's
+`validateRecord`, so they accept the format versions that core accepts. The package
+version follows Semantic Versioning independently of the format version.
+
 ## Entry points
 
 | Import path                     | Exports                                                       |
