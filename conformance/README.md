@@ -30,8 +30,9 @@ need any language runtime. It:
 Any failure exits with a non-zero status and a message: an unreachable
 repository, an unknown commit, a revision that is not a full SHA, a missing or
 modified file. Nothing is skipped. Local development and CI run the same
-command against the same pin; CI wiring is tracked in
-[#3](https://github.com/open-ocpp-trace/sdk/issues/3).
+command against the same pin: the TypeScript workflow,
+[`.github/workflows/typescript.yml`](../.github/workflows/typescript.yml),
+runs it before the tests.
 
 ## Updating the pinned revision
 

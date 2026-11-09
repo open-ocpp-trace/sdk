@@ -37,6 +37,12 @@ vp run --filter @open-ocpp-trace/core pack   # build one package
 `vp check --fix` applies formatting and safe lint fixes. `vp test watch`
 re-runs the tests on change.
 
+CI ([`.github/workflows/typescript.yml`](../.github/workflows/typescript.yml))
+runs `conformance/fetch.sh` from the repository root, then the first four
+commands above, on Node.js 22 and 24 with the Bun version of
+`packageManager`. It runs when a pull request touches `typescript/`,
+`conformance/` or the workflow, and on every push to `main`.
+
 ## Layout
 
 ```text
