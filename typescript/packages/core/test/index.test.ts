@@ -29,7 +29,7 @@ describe("enumerations", () => {
 });
 
 describe("isSupportedSchemaVersion", () => {
-  it.each(["1.0", "1.1", "1.42"])("accepts %j", (version) => {
+  it.each(["1.0", "1.1", "1.10", "1.42"])("accepts %j", (version) => {
     expect(isSupportedSchemaVersion(version)).toBe(true);
   });
 
@@ -42,6 +42,7 @@ describe("isSupportedSchemaVersion", () => {
     "1.",
     ".1",
     "01.1",
+    "1.01",
     "1.1.0",
     "1.x",
     " 1.1",

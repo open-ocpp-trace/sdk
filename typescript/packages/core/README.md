@@ -25,11 +25,12 @@ version `"1.1"` of the specification:
 | `SCHEMA_VERSION`         | `"1.1"` | version of the pinned specification        |
 | `SUPPORTED_SCHEMA_MAJOR` | `1`     | major version accepted by `validateRecord` |
 
-`schemaVersion` must be `"1.<minor>"` with ASCII digits only. Minor versions
-are forward compatible within a major, so `"1.0"` and `"1.42"` are accepted.
-Another major (`"2.0"`) is rejected as `unsupported-version`, a malformed value
-(`"1"`, `"v1.1"`, `"1.1.0"`) as `format`. `isSupportedSchemaVersion(value)`
-applies the same rule on its own.
+`schemaVersion` must be `"1.<minor>"` with ASCII digits only and no leading
+zero (`"0"` itself is allowed). Minor versions are forward compatible within a
+major, so `"1.0"`, `"1.10"` and `"1.42"` are accepted. A well-formed version of
+another major (`"2.0"`) is rejected as `unsupported-version`; a malformed value
+(`"1"`, `"v1.1"`, `"1.1.0"`, `"01.1"`, `"1.01"`) as `format`.
+`isSupportedSchemaVersion(value)` applies the same rule on its own.
 
 ## Usage
 

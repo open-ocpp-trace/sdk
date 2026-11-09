@@ -42,7 +42,8 @@ export class TraceValidationError extends Error {
   readonly issues: readonly ValidationIssue[];
 
   constructor(issues: readonly ValidationIssue[]) {
-    const details = issues.map((issue) => `${issue.path || "/"}: ${issue.message}`);
+    // The root pointer is "", not "/" (which is the key ""), so name it.
+    const details = issues.map((issue) => `${issue.path || "<root>"}: ${issue.message}`);
     super(`Invalid trace record: ${details.join("; ")}`);
     this.issues = issues;
   }
@@ -69,6 +70,14 @@ function describe(value: unknown): string {
 }
 
 const STRING_FIELDS = ["ocppVersion", "chargePointId", "messageId", "action", "raw"] as const;
+const ERROR_STRING_FIELDS = ["code", "description"] as const;
+const REQUIRED_FIELDS = [
+  "schemaVersion",
+  "timestamp",
+  "transport",
+  "direction",
+  "messageType",
+] as const;
 
 class Collector {
   readonly issues: ValidationIssue[] = [];
@@ -84,11 +93,19 @@ class Collector {
     return false;
   }
 
-  enum(path: string, value: unknown, allowed: readonly string[]): void {
-    if (!this.string(path, value)) return;
-    if (!allowed.includes(value)) {
-      this.add(path, "enum", `expected one of ${quoted(allowed)}, got ${JSON.stringify(value)}`);
+  /** Records a type issue for each of `fields` that `object` holds as a non-string. */
+  optionalStrings(prefix: string, object: JsonObject, fields: readonly string[]): void {
+    for (const field of fields) {
+      if (object[field] !== undefined) this.string(`${prefix}/${field}`, object[field]);
     }
+  }
+
+  /** Records a type or enum issue unless `value` is one of `allowed`; returns whether it is. */
+  enum<T extends string>(path: string, value: unknown, allowed: readonly T[]): value is T {
+    if (!this.string(path, value)) return false;
+    if ((allowed as readonly string[]).includes(value)) return true;
+    this.add(path, "enum", `expected one of ${quoted(allowed)}, got ${JSON.stringify(value)}`);
+    return false;
   }
 }
 
@@ -103,7 +120,11 @@ function checkSchemaVersion(issues: Collector, value: unknown): void {
       `${expected}: major version of ${JSON.stringify(value)} is not supported`,
     );
   } else {
-    issues.add(path, "format", `${expected} with digits only, got ${JSON.stringify(value)}`);
+    issues.add(
+      path,
+      "format",
+      `${expected} with digits only and no leading zero, got ${JSON.stringify(value)}`,
+    );
   }
 }
 
@@ -112,9 +133,7 @@ function checkError(issues: Collector, error: unknown): void {
     issues.add("/error", "type", `expected an object, got ${describe(error)}`);
     return;
   }
-  for (const field of ["code", "description"]) {
-    if (error[field] !== undefined) issues.string(`/error/${field}`, error[field]);
-  }
+  issues.optionalStrings("/error", error, ERROR_STRING_FIELDS);
 }
 
 /** Applies the per-message-type rules, once `messageType` is known to be valid. */
@@ -161,8 +180,7 @@ export function validateRecord(input: unknown): ValidationResult {
   }
   const issues = new Collector();
 
-  const required = ["schemaVersion", "timestamp", "transport", "direction", "messageType"];
-  for (const field of required) {
+  for (const field of REQUIRED_FIELDS) {
     if (input[field] === undefined) issues.add(`/${field}`, "required", `missing field "${field}"`);
   }
 
@@ -177,11 +195,10 @@ export function validateRecord(input: unknown): ValidationResult {
   }
   if (transport !== undefined) issues.enum("/transport", transport, TRANSPORTS);
   if (direction !== undefined) issues.enum("/direction", direction, DIRECTIONS);
-  if (messageType !== undefined) issues.enum("/messageType", messageType, MESSAGE_TYPES);
+  const validMessageType =
+    messageType !== undefined && issues.enum("/messageType", messageType, MESSAGE_TYPES);
 
-  for (const field of STRING_FIELDS) {
-    if (input[field] !== undefined) issues.string(`/${field}`, input[field]);
-  }
+  issues.optionalStrings("", input, STRING_FIELDS);
   const { connectorId, meta } = input;
   if (connectorId !== undefined) {
     if (typeof connectorId !== "number" || !Number.isInteger(connectorId)) {
@@ -198,12 +215,7 @@ export function validateRecord(input: unknown): ValidationResult {
   // The schema's if/then/else rules are applied only to a valid messageType.
   // An invalid or missing one already fails the record, so skipping them
   // changes no verdict and avoids issues that follow from the first one.
-  if (
-    typeof messageType === "string" &&
-    (MESSAGE_TYPES as readonly string[]).includes(messageType)
-  ) {
-    checkMessageType(issues, input, messageType);
-  }
+  if (validMessageType) checkMessageType(issues, input, messageType);
 
   if (issues.issues.length > 0) return { ok: false, issues: issues.issues };
   return { ok: true, record: input as unknown as TraceRecord };

@@ -8,13 +8,7 @@ import {
   type ValidationIssue,
   type ValidationIssueCode,
 } from "../src/index.ts";
-
-const BASE = {
-  schemaVersion: "1.1",
-  timestamp: "2025-01-15T10:30:00.000Z",
-  transport: "json",
-  direction: "cp-to-csms",
-} as const;
+import { BASE_FIELDS as BASE } from "./support/records.ts";
 
 const CALL = { ...BASE, messageType: "CALL", action: "Heartbeat" } as const;
 const CALLRESULT = { ...BASE, messageType: "CALLRESULT" } as const;
@@ -109,6 +103,12 @@ describe("validateRecord: non-object input", () => {
     expect(issue.path).toBe("");
     expect(issue.code).toBe("type");
     expect(issue.message).toContain("object");
+  });
+
+  it('names the root as <root> in the error message, since the pointer / is the key ""', () => {
+    expect(() => assertRecord(null)).toThrow(
+      "Invalid trace record: <root>: expected an object, got null",
+    );
   });
 });
 
@@ -236,7 +236,7 @@ describe("validateRecord: values", () => {
 });
 
 describe("validateRecord: schemaVersion policy", () => {
-  it.each(["1.0", "1.1", "1.42"])("accepts %j", (schemaVersion) => {
+  it.each(["1.0", "1.1", "1.10", "1.42"])("accepts %j", (schemaVersion) => {
     expect(issuesOf({ ...CALL, schemaVersion })).toEqual([]);
   });
 
@@ -246,11 +246,14 @@ describe("validateRecord: schemaVersion policy", () => {
     expect(issue.message).toContain('"1.<minor>"');
   });
 
-  it.each(["1", "v1.1", "", "1.1.0", "1.x"])("rejects malformed %j", (schemaVersion) => {
-    const issue = onlyIssue({ ...CALL, schemaVersion });
-    expect([issue.path, issue.code]).toEqual(["/schemaVersion", "format"]);
-    expect(issue.message).toContain('"1.<minor>"');
-  });
+  it.each(["1", "v1.1", "", "1.1.0", "1.x", "01.1", "1.01"])(
+    "rejects malformed %j",
+    (schemaVersion) => {
+      const issue = onlyIssue({ ...CALL, schemaVersion });
+      expect([issue.path, issue.code]).toEqual(["/schemaVersion", "format"]);
+      expect(issue.message).toContain('"1.<minor>"');
+    },
+  );
 });
 
 describe("validateRecord: collecting issues", () => {

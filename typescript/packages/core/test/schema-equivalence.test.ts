@@ -168,6 +168,9 @@ function synthetic(): Case[] {
   for (const value of [
     "1.0",
     "1.1",
+    "1.10",
+    "01.1",
+    "1.01",
     "1.42",
     "2.0",
     "0.9",
