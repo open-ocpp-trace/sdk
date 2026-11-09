@@ -8,22 +8,17 @@ import { describe, expect, it } from "vite-plus/test";
 import { callError, callResult, fullCall } from "../../core/test/support/records.ts";
 import { JsonlReadError, readRecords, type ReadResult } from "../src/reader/index.ts";
 import { serializeRecords } from "../src/writer/index.ts";
-import { chunksOf, concat, randomChunks, seededRandom, utf8 } from "./support/chunks.ts";
+import { chunksOf, collect, concat, randomChunks, seededRandom, utf8 } from "./support/chunks.ts";
 import { untypedAll } from "./writer/untyped.ts";
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
-}
 
 /** The first error `readRecords` throws in throw mode, with the records read before it. */
 async function firstError(
   chunks: ReadonlyArray<string | Uint8Array>,
+  options: { readonly maxLineBytes?: number } = {},
 ): Promise<{ readonly records: unknown[]; readonly error: JsonlReadError }> {
   const records: unknown[] = [];
   try {
-    for await (const record of readRecords(chunks)) records.push(record);
+    for await (const record of readRecords(chunks, options)) records.push(record);
   } catch (error) {
     if (error instanceof JsonlReadError) return { records, error };
     throw error;
@@ -186,15 +181,9 @@ describe("line numbers in throw mode", () => {
     const items = await collect(readRecords(chunks, { onError: "yield", maxLineBytes: 1024 }));
     expect(items.map(summary)).toEqual(EXPECTED);
 
-    const records: unknown[] = [];
-    await expect(
-      (async () => {
-        for await (const record of readRecords(chunks, { maxLineBytes: 1024 })) {
-          records.push(record);
-        }
-      })(),
-    ).rejects.toMatchObject({ line: 4, kind: "validation" });
-    expect(records).toHaveLength(1);
+    const thrown = await firstError(chunks, { maxLineBytes: 1024 });
+    expect(thrown.error).toMatchObject({ line: 4, kind: "validation" });
+    expect(thrown.records).toHaveLength(1);
   });
 
   it("reports an error on a final line without newline with its number", async () => {

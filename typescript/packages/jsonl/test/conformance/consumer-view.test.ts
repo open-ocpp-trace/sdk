@@ -2,22 +2,20 @@
 // fixture written by the writer then read back, derives exactly the
 // consumer view of its `expected.json`.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vite-plus/test";
 
 import type { TraceRecord } from "@open-ocpp-trace/core";
 
 import {
+  fixtureTraces,
   manifestPaths,
+  readCorpusBytes,
   readCorpusFile,
-  SPECIFICATION_DIR,
 } from "../../../core/test/support/corpus.ts";
 import { callResult, fullCall } from "../../../core/test/support/records.ts";
 import { readRecords } from "../../src/reader/index.ts";
 import { serializeRecords } from "../../src/writer/index.ts";
-import { utf8 } from "../support/chunks.ts";
+import { collect, utf8 } from "../support/chunks.ts";
 import { consumerView } from "./consumer-view.ts";
 
 interface Fixture {
@@ -28,23 +26,14 @@ interface Fixture {
 
 /** Every fixture of the manifest, each trace paired with its listed `expected.json`. */
 function fixtures(): Fixture[] {
-  const paths = manifestPaths();
-  const listed = new Set(paths);
-  return paths
-    .filter((path) => path.endsWith("/trace.jsonl"))
-    .map((tracePath) => {
-      const expectedPath = tracePath.replace(/trace\.jsonl$/, "expected.json");
-      if (!listed.has(expectedPath)) {
-        throw new Error(`${expectedPath} is not listed in the manifest next to ${tracePath}`);
-      }
-      return { name: tracePath.split("/").at(-2) ?? tracePath, tracePath, expectedPath };
-    });
-}
-
-async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const items: T[] = [];
-  for await (const item of iterable) items.push(item);
-  return items;
+  const listed = new Set(manifestPaths());
+  return fixtureTraces().map(({ name, path: tracePath }) => {
+    const expectedPath = tracePath.replace(/trace\.jsonl$/, "expected.json");
+    if (!listed.has(expectedPath)) {
+      throw new Error(`${expectedPath} is not listed in the manifest next to ${tracePath}`);
+    }
+    return { name, tracePath, expectedPath };
+  });
 }
 
 const FIXTURES = fixtures();
@@ -56,7 +45,7 @@ describe("consumer view of the conformance corpus", () => {
 
   describe.each(FIXTURES.map((fixture) => [fixture.name, fixture] as const))("%s", (_, fixture) => {
     const expected: unknown = JSON.parse(readCorpusFile(fixture.expectedPath));
-    const bytes = new Uint8Array(readFileSync(join(SPECIFICATION_DIR, fixture.tracePath)));
+    const bytes = readCorpusBytes(fixture.tracePath);
 
     it("matches expected.json from the records readRecords returns", async () => {
       const records = await collect(readRecords([bytes]));
@@ -98,6 +87,13 @@ describe("consumerView correlation rule", () => {
     expect(view.records[1]).toMatchObject({ correlatesWith: 0 });
     expect(view.records[2]).not.toHaveProperty("correlatesWith");
     expect(view.orphanResponses).toEqual([2]);
+  });
+
+  it("does not correlate a response with a CALL that follows it", () => {
+    const view = consumerView([response("a"), call("a")]);
+    expect(view.records[0]).not.toHaveProperty("correlatesWith");
+    expect(view.orphanResponses).toEqual([0]);
+    expect(view.unansweredCalls).toEqual([1]);
   });
 
   it("correlates with the most recent unanswered matching CALL", () => {
