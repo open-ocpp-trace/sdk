@@ -32,16 +32,29 @@ vp check                        # format check, lint and type check
 vp test                         # run the tests once
 vp run -r pack                  # build every package into its dist/
 vp run --filter @open-ocpp-trace/core pack   # build one package
+vp run smoke                    # smoke-test the packed packages from a clean consumer
 ```
 
 `vp check --fix` applies formatting and safe lint fixes. `vp test watch`
 re-runs the tests on change.
 
+`vp run smoke` runs [`scripts/smoke-consumer.sh`](scripts/smoke-consumer.sh)
+(`sh scripts/smoke-consumer.sh` is the same). It builds every package,
+packs `core` and `jsonl` with `bun pm pack`, installs both tarballs with
+npm into a throwaway project outside the workspace, then imports every
+public entry point and writes and reads one record back under Node.js and
+under Bun, and type-checks a TypeScript consumer with `tsc --noEmit` under
+the `bundler` and `nodenext` module resolutions. The consumer files live in
+[`scripts/smoke-consumer/`](scripts/smoke-consumer). It needs `npm` on the
+`PATH` and exits non-zero on the first failure; `SMOKE_KEEP=1` keeps the
+temporary directory.
+
 CI ([`.github/workflows/typescript.yml`](../.github/workflows/typescript.yml))
 runs `conformance/fetch.sh` from the repository root, then the first four
 commands above, on Node.js 22 and 24 with the Bun version of
-`packageManager`. It runs when a pull request touches `typescript/`,
-`conformance/` or the workflow, and on every push to `main`.
+`packageManager`, and the smoke test on Node.js 22. It runs when a pull
+request touches `typescript/`, `conformance/` or the workflow, and on every
+push to `main`.
 
 ## Layout
 
@@ -51,6 +64,7 @@ typescript/
 ├── bun.lock
 ├── tsconfig.base.json  shared compiler options
 ├── vite.config.ts      lint, format and test configuration
+├── scripts/            smoke-consumer.sh and its consumer project files
 └── packages/
     ├── core/
     │   ├── src/        package sources, runtime-neutral
