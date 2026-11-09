@@ -9,6 +9,7 @@
     "pack": "vp run -r pack"
   },
   "devDependencies": {
+    "@types/node": "22.20.5",
     "typescript": "6.0.3",
     "vite-plus": "1.5.0"
   },
