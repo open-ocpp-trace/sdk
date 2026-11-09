@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: shellcheck --version && shellcheck conformance/fetch.sh typescript/scripts/smoke-consumer.sh
+      - run: shellcheck --version && shellcheck conformance/fetch.sh typescript/scripts/*.sh
 
   typescript:
     name: TypeScript (Node.js ${{ matrix.node }})
