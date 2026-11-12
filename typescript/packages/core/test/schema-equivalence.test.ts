@@ -85,6 +85,10 @@ const TIMESTAMPS: readonly string[] = [
   "0000-01-01T00:00:00Z",
   "2025-01-15T23:59:60Z",
   "2025-01-15T18:59:60-05:00",
+  // A leap second with the two short offset spellings: the UTC check has to
+  // read the same offset the range check accepts.
+  "2017-01-01T00:59:60+0100",
+  "2017-01-01T00:59:60+01",
   // The offset carries the UTC minute below zero: 00:00+00:01 is 23:59 UTC.
   "2025-01-15T00:00:60+00:01",
   // Rejected.
